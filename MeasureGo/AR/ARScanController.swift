@@ -24,6 +24,8 @@ final class ARScanController: NSObject, ObservableObject {
     private var worldAnchor: AnchorEntity?
     private var pointMarkers: [ModelEntity] = []
     private var lineEntities: [ModelEntity] = []
+    private var reticleEntity: Entity?
+    private var reticleVisible = false
 
     static var isARSupported: Bool { ARWorldTrackingConfiguration.isSupported }
     static var isMeshingSupported: Bool {
@@ -39,6 +41,11 @@ final class ARScanController: NSObject, ObservableObject {
         let anchor = AnchorEntity(world: matrix_identity_float4x4)
         arView.scene.addAnchor(anchor)
         worldAnchor = anchor
+
+        let reticle = Self.makeReticle()
+        reticle.isEnabled = false
+        anchor.addChild(reticle)
+        reticleEntity = reticle
 
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal]
@@ -61,6 +68,58 @@ final class ARScanController: NSObject, ObservableObject {
 
     func pauseSession() {
         arView?.session.pause()
+    }
+
+    // MARK: - Reticle (Unity's Indicator: a 3D marker on the raycast hit)
+
+    /// Shows/hides the 3D reticle that tracks the screen-center raycast hit.
+    func setReticleVisible(_ visible: Bool) {
+        reticleVisible = visible
+        if !visible {
+            reticleEntity?.isEnabled = false
+        }
+    }
+
+    private static func makeReticle() -> Entity {
+        let root = Entity()
+        let ring = ModelEntity(
+            mesh: .generateCylinder(height: 0.002, radius: 0.06),
+            materials: [UnlitMaterial(color: UIColor.white)]
+        )
+        let innerDisc = ModelEntity(
+            mesh: .generateCylinder(height: 0.003, radius: 0.045),
+            materials: [UnlitMaterial(color: UIColor(white: 0.1, alpha: 1))]
+        )
+        let dot = ModelEntity(
+            mesh: .generateSphere(radius: 0.008),
+            materials: [UnlitMaterial(color: UIColor.white)]
+        )
+        dot.position.y = 0.006
+        root.addChild(ring)
+        root.addChild(innerDisc)
+        root.addChild(dot)
+        root.components.set(OpacityComponent(opacity: 0.85))
+        return root
+    }
+
+    /// Called every frame: keeps the reticle glued to the surface under the
+    /// screen center.
+    fileprivate func updateReticle() {
+        guard reticleVisible, let reticleEntity else { return }
+        guard let arView else {
+            reticleEntity.isEnabled = false
+            return
+        }
+        let center = CGPoint(x: arView.bounds.midX, y: arView.bounds.midY)
+        guard let hit = arView.raycast(from: center, allowing: .estimatedPlane, alignment: .any).first
+        else {
+            reticleEntity.isEnabled = false
+            return
+        }
+        let t = hit.worldTransform
+        reticleEntity.position = SIMD3<Float>(t.columns.3.x, t.columns.3.y, t.columns.3.z)
+        reticleEntity.orientation = simd_quatf(t)
+        reticleEntity.isEnabled = true
     }
 
     // MARK: - Raycast + markers
@@ -196,6 +255,10 @@ extension ARScanController: ARSessionDelegate {
         if added > 0 {
             DispatchQueue.main.async { self.meshChunkCount += added }
         }
+    }
+
+    func session(_ session: ARSession, didUpdate frame: ARFrame) {
+        updateReticle()
     }
 }
 

@@ -312,9 +312,11 @@ private struct PhotosTabView: View {
 private struct PoolTabView: View {
 
     @ObservedObject var viewModel: ProjectDetailsViewModel
-    @State private var stubMessage: String?
     @State private var showRescanConfirm = false
     @State private var showScanScreen = false
+    @State private var isUploading = false
+    @State private var uploadError: String?
+    @State private var sessionExpired = false
 
     var body: some View {
         VStack(spacing: 16) {
@@ -372,7 +374,7 @@ private struct PoolTabView: View {
 
                     if viewModel.hasScan {
                         Button {
-                            stubMessage = "Uploading to the portal arrives in a later step of the port."
+                            startUpload()
                         } label: {
                             Label("Upload", systemImage: "icloud.and.arrow.up")
                                 .frame(maxWidth: .infinity)
@@ -383,6 +385,25 @@ private struct PoolTabView: View {
                 }
                 .padding(.horizontal, 24)
                 .padding(.bottom, 16)
+            }
+        }
+        .overlay {
+            if isUploading {
+                ZStack {
+                    Color.black.opacity(0.45).ignoresSafeArea()
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(.white)
+                        Text("Please wait\nUploading")
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding(32)
+                    .background(MainView.navy.opacity(0.9))
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
+                }
             }
         }
         .confirmationDialog(
@@ -399,15 +420,43 @@ private struct PoolTabView: View {
             }
         }
         .alert(
-            "Not implemented yet",
+            "Upload failed",
             isPresented: Binding(
-                get: { stubMessage != nil },
-                set: { if !$0 { stubMessage = nil } }
+                get: { uploadError != nil },
+                set: { if !$0 { uploadError = nil } }
             )
         ) {
-            Button("OK", role: .cancel) { stubMessage = nil }
+            Button("OK", role: .cancel) { uploadError = nil }
         } message: {
-            Text(stubMessage ?? "")
+            Text(uploadError ?? "")
+        }
+        .alert("Your session has expired.", isPresented: $sessionExpired) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Please log out and log in again, then retry the upload.")
+        }
+    }
+
+    private func startUpload() {
+        isUploading = true
+        Task {
+            // Unity checks the token before uploading (FsmDetails.UploadPrj).
+            switch await AuthManager.shared.checkToken() {
+            case .invalid:
+                isUploading = false
+                sessionExpired = true
+                return
+            case .valid, .unreachable:
+                break
+            }
+
+            do {
+                let updated = try await UploadService.upload(project: viewModel.project)
+                viewModel.project = updated
+            } catch {
+                uploadError = error.localizedDescription
+            }
+            isUploading = false
         }
     }
 }

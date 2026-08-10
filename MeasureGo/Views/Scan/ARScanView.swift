@@ -37,6 +37,10 @@ struct ARScanView: View {
             }
         }
         .statusBarHidden()
+        .onChange(of: viewModel.phase) { _, newPhase in
+            // The 3D reticle tracks the raycast hit only while placing points.
+            viewModel.controller.setReticleVisible(newPhase != .tutorial)
+        }
         .sheet(isPresented: $showTypeSelector) {
             typeSelectorSheet
         }
@@ -95,13 +99,13 @@ struct ARScanView: View {
                     .foregroundStyle(MainView.navy)
                 Text("Slowly walk around the pool while pointing the camera at the ground and walls. The detected surface appears as a mesh. When the whole pool is covered, tap Start to place points.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(MainView.navy.opacity(0.85))
                     .multilineTextAlignment(.center)
 
                 if ARScanController.isMeshingSupported {
                     Text("Scanned surfaces: \(viewModel.controller.meshChunkCount)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MainView.navy)
                 } else {
                     Text("This device has no LiDAR — points can still be placed on detected planes, but no mesh will be saved.")
                         .font(.caption)
@@ -185,18 +189,18 @@ struct ARScanView: View {
             .padding(.top, 8)
 
             Text(subtitle)
-                .font(.caption)
+                .font(.footnote.weight(.medium))
                 .foregroundStyle(.white)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(.black.opacity(0.45))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .padding(.horizontal, 32)
                 .padding(.top, 4)
-                .shadow(radius: 2)
 
-            Spacer()
-
-            // Center reticle
-            reticle
-
+            // The reticle itself is a 3D object glued to the scanned surface
+            // (ARScanController.updateReticle), not a screen-space overlay.
             Spacer()
 
             // Bottom controls
@@ -268,27 +272,6 @@ struct ARScanView: View {
             .padding(.horizontal, 16)
             .padding(.bottom, 24)
         }
-    }
-
-    private var reticle: some View {
-        ZStack {
-            Circle()
-                .stroke(.white, lineWidth: 2)
-                .frame(width: 44, height: 44)
-            Circle()
-                .fill(.white)
-                .frame(width: 6, height: 6)
-            Rectangle().fill(.white).frame(width: 16, height: 1)
-                .offset(x: -28)
-            Rectangle().fill(.white).frame(width: 16, height: 1)
-                .offset(x: 28)
-            Rectangle().fill(.white).frame(width: 1, height: 16)
-                .offset(y: -28)
-            Rectangle().fill(.white).frame(width: 1, height: 16)
-                .offset(y: 28)
-        }
-        .shadow(radius: 2)
-        .allowsHitTesting(false)
     }
 
     private var typeSelectorSheet: some View {
