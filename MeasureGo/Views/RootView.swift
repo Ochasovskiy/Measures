@@ -16,7 +16,11 @@ struct RootView: View {
     var body: some View {
         ZStack {
             if showMain {
-                MainView()
+                MainView {
+                    showMain = false
+                    authService.logout()
+                    AppLog.log("User logged out")
+                }
             } else {
                 LoginView(authService: authService) {
                     showMain = true

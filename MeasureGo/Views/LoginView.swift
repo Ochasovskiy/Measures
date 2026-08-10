@@ -14,6 +14,8 @@ struct LoginView: View {
     @ObservedObject var authService: AuthService
     let onContinue: () -> Void
 
+    @State private var showFeedback = false
+
     private static let navy = Color(red: 0, green: 0.18, blue: 0.369)
 
     var body: some View {
@@ -23,6 +25,20 @@ struct LoginView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: 0) {
+                // Unity's auth screen has a feedback button (FsmAuth).
+                HStack {
+                    Spacer()
+                    Button {
+                        showFeedback = true
+                    } label: {
+                        Image(systemName: "exclamationmark.bubble")
+                            .font(.title3)
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                }
+                .padding(.horizontal, 8)
+
                 Spacer()
 
                 Image("LAMeasureLogo")
@@ -45,6 +61,9 @@ struct LoginView: View {
                     .padding(.top, 40)
                     .padding(.bottom, 24)
             }
+        }
+        .sheet(isPresented: $showFeedback) {
+            BugReportView()
         }
     }
 

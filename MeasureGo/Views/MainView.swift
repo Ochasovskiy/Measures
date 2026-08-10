@@ -15,8 +15,12 @@ struct MainView: View {
         case uploaded = "Uploaded"
     }
 
+    let onLogout: () -> Void
+
     @StateObject private var viewModel = ProjectListViewModel()
     @State private var tab: Tab = .active
+    @State private var showFeedback = false
+    @State private var showLogoutConfirm = false
     @State private var projectToDelete: ProjectData?
     @State private var selectedProject: ProjectData?
     @State private var showNewProjectFlow = false
@@ -63,6 +67,19 @@ struct MainView: View {
             .ignoresSafeArea(edges: .bottom)
             .navigationDestination(item: $selectedProject) { project in
                 ProjectDetailsView(project: project)
+            }
+            .sheet(isPresented: $showFeedback) {
+                BugReportView()
+            }
+            .confirmationDialog(
+                "Log out of MeasureGo?",
+                isPresented: $showLogoutConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Log out", role: .destructive) { onLogout() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Projects saved on this device stay on this device.")
             }
             .fullScreenCover(isPresented: $showNewProjectFlow) {
                 NewProjectFlowView { project in
@@ -114,6 +131,24 @@ struct MainView: View {
                 .font(.body.weight(.semibold))
                 .foregroundStyle(.white)
             }
+
+            Menu {
+                Button {
+                    showFeedback = true
+                } label: {
+                    Label("Send feedback", systemImage: "exclamationmark.bubble")
+                }
+                Button(role: .destructive) {
+                    showLogoutConfirm = true
+                } label: {
+                    Label("Log out", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 32, height: 32)
+            }
         }
         .padding(.horizontal, 20)
         .padding(.top, 8)
@@ -146,5 +181,5 @@ struct MainView: View {
 }
 
 #Preview {
-    MainView()
+    MainView(onLogout: {})
 }

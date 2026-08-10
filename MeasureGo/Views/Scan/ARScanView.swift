@@ -42,6 +42,12 @@ struct ARScanView: View {
             // The 3D reticle tracks the raycast hit only while placing points.
             viewModel.controller.setReticleVisible(newPhase != .tutorial)
         }
+        .onDisappear {
+            // Leaving the scan screen by any route must end the session and
+            // the torch — including swipe-away and the Congratulations OK.
+            viewModel.controller.pauseSession()
+            ARScanController.forceTorchOff()
+        }
         .sheet(isPresented: $showTypeSelector) {
             typeSelectorSheet
         }
@@ -178,15 +184,20 @@ struct ARScanView: View {
                 .background(MainView.navy.opacity(0.85))
                 .clipShape(Capsule())
                 Spacer()
-                Toggle(isOn: $viewModel.lockHeight) {
-                    Image(systemName: viewModel.lockHeight ? "lock.fill" : "lock.open")
+                HStack(spacing: 8) {
+                    if ARScanController.isTorchAvailable {
+                        TorchButton(controller: viewModel.controller)
+                    }
+                    Toggle(isOn: $viewModel.lockHeight) {
+                        Image(systemName: viewModel.lockHeight ? "lock.fill" : "lock.open")
+                    }
+                    .toggleStyle(.button)
+                    .tint(.white)
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 44)
+                    .background(MainView.navy.opacity(0.85))
+                    .clipShape(Circle())
                 }
-                .toggleStyle(.button)
-                .tint(.white)
-                .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
-                .background(MainView.navy.opacity(0.85))
-                .clipShape(Circle())
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -375,6 +386,23 @@ struct ARScanView: View {
         let updated = viewModel.saveScan(into: project)
         onScanSaved(updated)
         showCongratulations = true
+    }
+}
+
+private struct TorchButton: View {
+    @ObservedObject var controller: ARScanController
+
+    var body: some View {
+        Button {
+            controller.toggleTorch()
+        } label: {
+            Image(systemName: controller.isTorchOn ? "flashlight.on.fill" : "flashlight.off.fill")
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(controller.isTorchOn ? MainView.navy : .white)
+                .frame(width: 44, height: 44)
+                .background(controller.isTorchOn ? Color.white : MainView.navy.opacity(0.85))
+                .clipShape(Circle())
+        }
     }
 }
 

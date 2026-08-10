@@ -20,6 +20,7 @@ struct ProjectDetailsView: View {
 
     @StateObject private var viewModel: ProjectDetailsViewModel
     @State private var tab: Tab = .details
+    @State private var showFeedback = false
     @Environment(\.dismiss) private var dismiss
 
     init(project: ProjectData) {
@@ -52,6 +53,9 @@ struct ProjectDetailsView: View {
         }
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .sheet(isPresented: $showFeedback) {
+            BugReportView()
+        }
     }
 
     private var header: some View {
@@ -79,6 +83,17 @@ struct ProjectDetailsView: View {
                 .background(viewModel.isUploaded ? Color.green.opacity(0.85) : MainView.salmon)
                 .foregroundStyle(.white)
                 .clipShape(Capsule())
+
+            // Unity's details screen has a settings button that opens the
+            // bug-report popup (FsmDetails.OnFeedbackBtnClicked).
+            Button {
+                showFeedback = true
+            } label: {
+                Image(systemName: "exclamationmark.bubble")
+                    .font(.title3)
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 44)
+            }
         }
         .padding(.horizontal, 12)
         .padding(.bottom, 12)

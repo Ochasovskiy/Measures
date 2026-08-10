@@ -12,6 +12,7 @@
 //
 
 import ARKit
+import AVFoundation
 import RealityKit
 import Combine
 import UIKit
@@ -19,6 +20,7 @@ import UIKit
 final class ARScanController: NSObject, ObservableObject {
 
     @Published private(set) var meshChunkCount = 0
+    @Published private(set) var isTorchOn = false
 
     private(set) weak var arView: ARView?
     private var worldAnchor: AnchorEntity?
@@ -70,7 +72,45 @@ final class ARScanController: NSObject, ObservableObject {
     }
 
     func pauseSession() {
+        // Never leave the torch burning when the scan ends.
+        setTorch(false)
         arView?.session.pause()
+    }
+
+    deinit {
+        Self.forceTorchOff()
+    }
+
+    // MARK: - Torch
+
+    static var isTorchAvailable: Bool {
+        AVCaptureDevice.default(for: .video)?.hasTorch ?? false
+    }
+
+    func toggleTorch() {
+        setTorch(!isTorchOn)
+    }
+
+    func setTorch(_ on: Bool) {
+        guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else { return }
+        do {
+            try device.lockForConfiguration()
+            device.torchMode = on ? .on : .off
+            device.unlockForConfiguration()
+            isTorchOn = on
+            AppLog.log("Torch \(on ? "on" : "off")")
+        } catch {
+            AppLog.log("Torch error: \(error.localizedDescription)")
+        }
+    }
+
+    /// Safe to call from anywhere (including deinit and app lifecycle hooks).
+    static func forceTorchOff() {
+        guard let device = AVCaptureDevice.default(for: .video),
+              device.hasTorch, device.torchMode != .off else { return }
+        try? device.lockForConfiguration()
+        device.torchMode = .off
+        device.unlockForConfiguration()
     }
 
     // MARK: - Reticle (Unity's Indicator: a 3D marker on the raycast hit)
