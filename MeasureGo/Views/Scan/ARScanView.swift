@@ -42,9 +42,16 @@ struct ARScanView: View {
             // The 3D reticle tracks the raycast hit only while placing points.
             viewModel.controller.setReticleVisible(newPhase != .tutorial)
         }
+        .onAppear {
+            // Scanning is hands-busy and touch-free for minutes at a time —
+            // keep the screen awake here only, not app-wide.
+            UIApplication.shared.isIdleTimerDisabled = true
+        }
         .onDisappear {
-            // Leaving the scan screen by any route must end the session and
-            // the torch — including swipe-away and the Congratulations OK.
+            // Leaving the scan screen by any route must end the session, the
+            // torch, and the screen-awake lock — including swipe-away and the
+            // Congratulations OK.
+            UIApplication.shared.isIdleTimerDisabled = false
             viewModel.controller.pauseSession()
             ARScanController.forceTorchOff()
         }
@@ -102,6 +109,16 @@ struct ARScanView: View {
 
     private var tutorialOverlay: some View {
         VStack {
+            // The torch is often needed during the mesh scan itself.
+            HStack {
+                Spacer()
+                if ARScanController.isTorchAvailable {
+                    TorchButton(controller: viewModel.controller)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+
             Spacer()
             VStack(spacing: 16) {
                 Text("Scan the pool area")

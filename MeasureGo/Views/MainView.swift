@@ -164,7 +164,9 @@ struct MainView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    ForEach(items, id: \.data.id) { file in
+                    // Keyed by file URL: unique even if two files ever share
+                    // a project id again.
+                    ForEach(items, id: \.url) { file in
                         ProjectCardView(
                             project: file.data,
                             creationDate: file.creationDate,

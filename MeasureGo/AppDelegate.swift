@@ -18,9 +18,6 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
         AppLog.startSession()
 
-        // Keep the screen awake while measuring (Unity's PreventScreenDimming).
-        application.isIdleTimerDisabled = true
-
         // Brand the segmented controls: selected segment navy with white text.
         let navy = UIColor(red: 0.043, green: 0.145, blue: 0.29, alpha: 1)
         UISegmentedControl.appearance().selectedSegmentTintColor = navy
@@ -43,13 +40,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
     func applicationDidEnterBackground(_ application: UIApplication) {
         // Hand the screen back to the system, and never leave the torch on.
+        // (The scan screen re-disables the idle timer when it reappears.)
         application.isIdleTimerDisabled = false
         ARScanController.forceTorchOff()
         AppLog.log("App entered background")
-    }
-
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        application.isIdleTimerDisabled = true
     }
 
     func applicationWillTerminate(_ application: UIApplication) {

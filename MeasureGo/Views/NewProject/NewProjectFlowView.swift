@@ -20,6 +20,10 @@ struct NewProjectFlowView: View {
         NavigationStack {
             FormStepView(viewModel: viewModel, onSaved: finish)
         }
+        .onAppear {
+            // Warm up the GPS fix so it is ready when the project is saved.
+            LocationProvider.shared.start()
+        }
     }
 
     private func finish() {
@@ -73,8 +77,28 @@ private struct FormStepView: View {
                         viewModel.phone = InputRules.filterPhone(newValue)
                     }
             }
-            Section("Address") {
-                TextField("Address 1", text: $viewModel.address1)
+            Section {
+                // Inline accessory: an optional helper for this field rather
+                // than a step the user must take first.
+                HStack(spacing: 8) {
+                    TextField("Address 1", text: $viewModel.address1)
+                    if viewModel.isLocatingAddress {
+                        ProgressView()
+                    } else {
+                        Button {
+                            viewModel.fillAddressFromLocation()
+                        } label: {
+                            Image(systemName: "location.fill")
+                                .font(.subheadline)
+                                .foregroundStyle(MainView.navy)
+                                .frame(width: 32, height: 32)
+                                .background(MainView.background)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Fill address from current location")
+                    }
+                }
                 TextField("Address 2", text: $viewModel.address2)
                 TextField("City", text: $viewModel.city)
                 TextField("State", text: $viewModel.state)
@@ -83,6 +107,10 @@ private struct FormStepView: View {
                     .onChange(of: viewModel.zip) { _, newValue in
                         viewModel.zip = InputRules.filterZip(newValue)
                     }
+            } header: {
+                Text("Address")
+            } footer: {
+                Text("Tap the location icon to fill empty address fields from your current position.")
             }
             Section("Notes") {
                 TextField("Additional notes", text: $viewModel.notes, axis: .vertical)
@@ -91,6 +119,11 @@ private struct FormStepView: View {
         }
         .navigationTitle("New project")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Location unavailable", isPresented: $viewModel.addressLookupFailed) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("No GPS fix yet, or location access is off. Check Settings → Privacy → Location Services, then try again.")
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Close") { dismiss() }

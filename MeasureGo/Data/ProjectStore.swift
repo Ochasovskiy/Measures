@@ -47,19 +47,78 @@ enum ProjectStore {
         let fm = FileManager.default
         guard let urls = try? fm.contentsOfDirectory(
             at: projectFolder,
-            includingPropertiesForKeys: [.creationDateKey],
+            includingPropertiesForKeys: [.creationDateKey, .contentModificationDateKey],
             options: .skipsHiddenFiles
         ) else { return [] }
 
-        return urls
+        let files: [(file: ProjectFile, modified: Date)] = urls
             .filter { $0.pathExtension == msrExtension }
             .compactMap { url in
                 guard let jsonData = try? Data(contentsOf: url),
                       let data = try? JSONDecoder().decode(ProjectData.self, from: jsonData)
                 else { return nil }
-                let creation = (try? url.resourceValues(forKeys: [.creationDateKey]))?.creationDate ?? .distantPast
-                return ProjectFile(url: url, creationDate: creation, data: data)
+                let values = try? url.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
+                return (
+                    ProjectFile(url: url, creationDate: values?.creationDate ?? .distantPast, data: data),
+                    values?.contentModificationDate ?? .distantPast
+                )
             }
+
+        // Older builds could write several files for the same project id.
+        // Show only the most recently modified file of each id.
+        var newestByID: [String: (file: ProjectFile, modified: Date)] = [:]
+        for entry in files {
+            let id = entry.file.data.id
+            if let existing = newestByID[id], existing.modified >= entry.modified { continue }
+            newestByID[id] = entry
+        }
+        if newestByID.count < files.count {
+            AppLog.log("Ignored \(files.count - newestByID.count) duplicate project file(s)")
+        }
+        return newestByID.values.map(\.file)
+    }
+
+    /// Removes stale duplicate .msr files, keeping the newest per project id.
+    /// Returns how many files were deleted.
+    @discardableResult
+    static func removeDuplicateProjectFiles() -> Int {
+        let fm = FileManager.default
+        guard let urls = try? fm.contentsOfDirectory(
+            at: projectFolder,
+            includingPropertiesForKeys: [.contentModificationDateKey],
+            options: .skipsHiddenFiles
+        ) else { return 0 }
+
+        var newest: [String: (url: URL, modified: Date)] = [:]
+        var duplicates: [URL] = []
+
+        for url in urls where url.pathExtension == msrExtension {
+            guard let jsonData = try? Data(contentsOf: url),
+                  let data = try? JSONDecoder().decode(ProjectData.self, from: jsonData)
+            else { continue }
+            let modified = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? .distantPast
+
+            if let existing = newest[data.id] {
+                // Keep the newer file, mark the other for removal.
+                if modified > existing.modified {
+                    duplicates.append(existing.url)
+                    newest[data.id] = (url, modified)
+                } else {
+                    duplicates.append(url)
+                }
+            } else {
+                newest[data.id] = (url, modified)
+            }
+        }
+
+        for url in duplicates {
+            try? fm.removeItem(at: url)
+        }
+        if !duplicates.isEmpty {
+            AppLog.log("Removed \(duplicates.count) duplicate project file(s)")
+        }
+        return duplicates.count
     }
 
     /// Reloads a single project from disk by its file name.
@@ -70,18 +129,21 @@ enum ProjectStore {
         return try? JSONDecoder().decode(ProjectData.self, from: data)
     }
 
+    /// Saves the project, assigning a file name on first save. Takes `inout`
+    /// so that name propagates back to the caller — otherwise every later
+    /// save would mint a new file and duplicate the project.
     @discardableResult
-    static func save(_ project: ProjectData) throws -> URL {
+    static func save(_ project: inout ProjectData) throws -> URL {
         let fm = FileManager.default
         try fm.createDirectory(at: projectFolder, withIntermediateDirectories: true)
 
-        let fileName = project.fileName.isEmpty ? randomFileName() : project.fileName
-        var toSave = project
-        toSave.fileName = fileName
+        if project.fileName.isEmpty {
+            project.fileName = randomFileName()
+        }
 
-        let encoder = JSONEncoder()
-        let data = try encoder.encode(toSave)
-        let url = projectFolder.appendingPathComponent(fileName).appendingPathExtension(msrExtension)
+        let data = try JSONEncoder().encode(project)
+        let url = projectFolder.appendingPathComponent(project.fileName)
+            .appendingPathExtension(msrExtension)
         try data.write(to: url, options: .atomic)
         return url
     }

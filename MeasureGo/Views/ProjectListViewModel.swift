@@ -24,6 +24,8 @@ final class ProjectListViewModel: ObservableObject {
 
     init() {
         orderBy = OrderBy(rawValue: UserDefaults.standard.integer(forKey: Self.orderByKey)) ?? .descending
+        // One-time cleanup of duplicate .msr files written by earlier builds.
+        ProjectStore.removeDuplicateProjectFiles()
         reload()
     }
 

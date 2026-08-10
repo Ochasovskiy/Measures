@@ -395,6 +395,16 @@ private struct PoolTabView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(MainView.navy)
+                    // Anchored to the button so the dialog opens from the
+                    // bottom of the screen instead of over the header.
+                    .confirmationDialog(
+                        "Are you sure you want to start scanning?\nThe previous scan will be deleted.",
+                        isPresented: $showRescanConfirm,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Yes") { showScanScreen = true }
+                        Button("Cancel", role: .cancel) {}
+                    }
 
                     if viewModel.hasScan {
                         Button {
@@ -429,14 +439,6 @@ private struct PoolTabView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 20))
                 }
             }
-        }
-        .confirmationDialog(
-            "Are you sure you want to start scanning?\nThe previous scan will be deleted.",
-            isPresented: $showRescanConfirm,
-            titleVisibility: .visible
-        ) {
-            Button("Yes") { showScanScreen = true }
-            Button("Cancel", role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showScanScreen) {
             ARScanView(project: viewModel.project) { updated in
@@ -480,8 +482,12 @@ private struct PoolTabView: View {
             do {
                 let updated = try await UploadService.upload(project: viewModel.project)
                 viewModel.project = updated
+                AppLog.log("Upload complete: \(updated.id)")
+                Haptics.success()
             } catch {
                 uploadError = error.localizedDescription
+                AppLog.log("Upload failed: \(error.localizedDescription)")
+                Haptics.error()
             }
             isUploading = false
         }

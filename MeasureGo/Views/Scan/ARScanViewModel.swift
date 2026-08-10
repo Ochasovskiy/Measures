@@ -80,6 +80,7 @@ final class ARScanViewModel: ObservableObject {
 
         guard var position = controller.raycastFromCenter() else {
             placementFailed = true
+            Haptics.warning()
             return
         }
 
@@ -105,6 +106,8 @@ final class ARScanViewModel: ObservableObject {
             controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: false)
         }
         syncLockedHeight()
+        // Fired after the position is captured — cannot affect the point.
+        Haptics.placement()
     }
 
     func undoLastPoint() {
@@ -116,6 +119,7 @@ final class ARScanViewModel: ObservableObject {
         guard let last = points.last, currentTypeFilter(last) else { return }
 
         points.removeLast()
+        Haptics.selection()
         controller.removeLastMarker()
         if last.type == .perimeter {
             controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: false)
@@ -188,8 +192,10 @@ final class ARScanViewModel: ObservableObject {
 
         // 3. Update the project (.msr).
         updated.scan = .init(fileName: savedName, uuid: scanUuid, timeStamp: timeStamp)
-        try? ProjectStore.save(updated)
+        try? ProjectStore.save(&updated)
 
+        AppLog.log("Scan saved: \(pointsData.count) points, mesh: \(meshFileName.isEmpty ? "none" : meshFileName)")
+        Haptics.success()
         controller.pauseSession()
         return updated
     }

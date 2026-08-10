@@ -26,6 +26,29 @@ final class NewProjectViewModel: ObservableObject {
     // Photos: first one becomes the project's main photo
     @Published var photos: [UIImage] = []
 
+    @Published var isLocatingAddress = false
+    @Published var addressLookupFailed = false
+
+    /// Fills the address fields from the current GPS fix. Only overwrites
+    /// fields the user has left empty, so typed input is never lost.
+    func fillAddressFromLocation() {
+        isLocatingAddress = true
+        LocationProvider.shared.start()
+        Task {
+            guard let found = await LocationProvider.shared.reverseGeocodeCurrentAddress() else {
+                isLocatingAddress = false
+                addressLookupFailed = true
+                return
+            }
+            if address1.isEmpty { address1 = found.address1 }
+            if city.isEmpty { city = found.city }
+            if state.isEmpty { state = found.state }
+            if zip.isEmpty { zip = InputRules.filterZip(found.postalcode) }
+            isLocatingAddress = false
+            AppLog.log("Address filled from GPS")
+        }
+    }
+
     static let maxPhotoCount = 4
 
     // Unity's per-photo capture tips
@@ -48,8 +71,9 @@ final class NewProjectViewModel: ObservableObject {
         project.customer = .init(name: contactName, email: email, phone: phone)
         project.address = .init(address1: address1, address2: address2, city: city,
                                 state: state, postalcode: zip, country: "")
-        // TODO: GPS coordinates (Unity reads them from GpsLocation here) —
-        // location plumbing arrives with the AR step.
+        // Unity refreshes the GPS fix here (FsmMain.SaveProject); zeros when
+        // location is unavailable or not authorized.
+        project.location = LocationProvider.shared.currentCoordinates
         project.notes = notes
 
         for (index, image) in photos.enumerated() {
@@ -62,7 +86,8 @@ final class NewProjectViewModel: ObservableObject {
             project.addPhoto(fileName: savedName, uuid: uuid)
         }
 
-        try ProjectStore.save(project)
+        try ProjectStore.save(&project)
+        AppLog.log("Project created: \(project.id) file: \(project.fileName) photos: \(photos.count)")
         return project
     }
 }

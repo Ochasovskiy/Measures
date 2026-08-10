@@ -98,6 +98,7 @@ final class ARScanController: NSObject, ObservableObject {
             device.torchMode = on ? .on : .off
             device.unlockForConfiguration()
             isTorchOn = on
+            Haptics.selection()
             AppLog.log("Torch \(on ? "on" : "off")")
         } catch {
             AppLog.log("Torch error: \(error.localizedDescription)")

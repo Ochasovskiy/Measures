@@ -193,7 +193,7 @@ enum UploadService {
         // Success: mark uploaded and persist, like Unity's OnUploaded.
         var updated = project
         updated.status = true
-        try ProjectStore.save(updated)
+        try ProjectStore.save(&updated)
         return updated
     }
 }
