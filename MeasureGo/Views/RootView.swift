@@ -23,6 +23,9 @@ struct RootView: View {
                 }
             }
         }
+        // The app's screens are designed light-on-brand (navy on light
+        // surfaces); forcing light keeps text readable in system dark mode.
+        .preferredColorScheme(.light)
         .onAppear {
             authService.startAuthentication()
         }

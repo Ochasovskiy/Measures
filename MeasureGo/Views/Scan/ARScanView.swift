@@ -20,6 +20,7 @@ struct ARScanView: View {
     let onScanSaved: (ProjectData) -> Void
 
     @State private var showTypeSelector = false
+    @State private var showNotesEditor = false
     @State private var showCompleteConfirm = false
     @State private var showCongratulations = false
 
@@ -43,6 +44,9 @@ struct ARScanView: View {
         }
         .sheet(isPresented: $showTypeSelector) {
             typeSelectorSheet
+        }
+        .sheet(isPresented: $showNotesEditor) {
+            notesEditorSheet
         }
         .alert("Complete the scan?", isPresented: $showCompleteConfirm) {
             Button("Save scan") { saveScan() }
@@ -99,17 +103,15 @@ struct ARScanView: View {
                     .foregroundStyle(MainView.navy)
                 Text("Slowly walk around the pool while pointing the camera at the ground and walls. The detected surface appears as a mesh. When the whole pool is covered, tap Start to place points.")
                     .font(.subheadline)
-                    .foregroundStyle(MainView.navy.opacity(0.85))
+                    .foregroundStyle(MainView.navy)
                     .multilineTextAlignment(.center)
 
                 if ARScanController.isMeshingSupported {
-                    Text("Scanned surfaces: \(viewModel.controller.meshChunkCount)")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(MainView.navy)
+                    MeshCounterView(controller: viewModel.controller)
                 } else {
                     Text("This device has no LiDAR — points can still be placed on detected planes, but no mesh will be saved.")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(MainView.salmon)
                         .multilineTextAlignment(.center)
                 }
 
@@ -129,8 +131,9 @@ struct ARScanView: View {
                     .foregroundStyle(.secondary)
             }
             .padding(20)
-            .background(.regularMaterial)
+            .background(.white.opacity(0.96))
             .clipShape(RoundedRectangle(cornerRadius: 20))
+            .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
             .padding(16)
         }
     }
@@ -158,7 +161,7 @@ struct ARScanView: View {
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
-                        .background(.black.opacity(0.4))
+                        .background(MainView.navy.opacity(0.85))
                         .clipShape(Circle())
                 }
                 Spacer()
@@ -172,7 +175,7 @@ struct ARScanView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(.black.opacity(0.4))
+                .background(MainView.navy.opacity(0.85))
                 .clipShape(Capsule())
                 Spacer()
                 Toggle(isOn: $viewModel.lockHeight) {
@@ -182,7 +185,7 @@ struct ARScanView: View {
                 .tint(.white)
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
-                .background(.black.opacity(0.4))
+                .background(MainView.navy.opacity(0.85))
                 .clipShape(Circle())
             }
             .padding(.horizontal, 16)
@@ -194,7 +197,7 @@ struct ARScanView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .background(.black.opacity(0.45))
+                .background(MainView.navy.opacity(0.85))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 32)
                 .padding(.top, 4)
@@ -206,25 +209,45 @@ struct ARScanView: View {
             // Bottom controls
             VStack(spacing: 12) {
                 if viewModel.phase == .features {
-                    Button {
-                        showTypeSelector = true
-                    } label: {
-                        HStack {
-                            Circle()
-                                .fill(Color(viewModel.selectedFeatureType.uiColor))
-                                .frame(width: 14, height: 14)
-                            Text(viewModel.selectedFeatureType == .none
-                                 ? "Select point type"
-                                 : viewModel.selectedFeatureType.displayName)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption)
+                    HStack(spacing: 10) {
+                        Button {
+                            showTypeSelector = true
+                        } label: {
+                            HStack {
+                                Circle()
+                                    .fill(Color(viewModel.selectedFeatureType.uiColor))
+                                    .frame(width: 14, height: 14)
+                                Text(viewModel.selectedFeatureType == .none
+                                     ? "Select point type"
+                                     : viewModel.selectedFeatureType.displayName)
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.caption)
+                            }
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(MainView.navy.opacity(0.85))
+                            .clipShape(Capsule())
                         }
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(.black.opacity(0.5))
-                        .clipShape(Capsule())
+
+                        Button {
+                            showNotesEditor = true
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 40, height: 40)
+                                .background(MainView.navy.opacity(0.85))
+                                .clipShape(Circle())
+                                .overlay(alignment: .topTrailing) {
+                                    if !viewModel.pointNotes.isEmpty {
+                                        Circle()
+                                            .fill(MainView.salmon)
+                                            .frame(width: 12, height: 12)
+                                    }
+                                }
+                        }
                     }
                 }
 
@@ -236,7 +259,7 @@ struct ARScanView: View {
                             .font(.title2)
                             .foregroundStyle(.white)
                             .frame(width: 54, height: 54)
-                            .background(.black.opacity(0.5))
+                            .background(MainView.navy.opacity(0.85))
                             .clipShape(Circle())
                     }
                     .disabled(!viewModel.canUndo)
@@ -301,6 +324,32 @@ struct ARScanView: View {
         .presentationDetents([.medium, .large])
     }
 
+    private var notesEditorSheet: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Notes for new points", text: $viewModel.pointNotes, axis: .vertical)
+                        .lineLimit(3...6)
+                } footer: {
+                    Text("These notes are attached to every point you place while they are set.")
+                }
+                if !viewModel.pointNotes.isEmpty {
+                    Button("Clear notes", role: .destructive) {
+                        viewModel.pointNotes = ""
+                    }
+                }
+            }
+            .navigationTitle("Point notes")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { showNotesEditor = false }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+    }
+
     private var unsupportedView: some View {
         VStack(spacing: 16) {
             Image(systemName: "arkit")
@@ -326,6 +375,22 @@ struct ARScanView: View {
         let updated = viewModel.saveScan(into: project)
         onScanSaved(updated)
         showCongratulations = true
+    }
+}
+
+// The counter must observe the controller directly — observing only the
+// view model doesn't refresh when the controller's published count changes.
+private struct MeshCounterView: View {
+    @ObservedObject var controller: ARScanController
+
+    var body: some View {
+        Text("Scanned surfaces: \(controller.meshChunkCount)")
+            .font(.subheadline.weight(.bold))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(MainView.navy)
+            .clipShape(Capsule())
     }
 }
 

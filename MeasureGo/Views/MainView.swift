@@ -24,6 +24,9 @@ struct MainView: View {
     static let navy = Color(red: 0.043, green: 0.145, blue: 0.29)
     static let salmon = Color(red: 0.976, green: 0.435, blue: 0.38)
     static let background = Color(red: 0.882, green: 0.898, blue: 0.925)
+    /// Secondary text on white/light cards — slate blue in the navy palette,
+    /// with much better contrast than the system .secondary gray.
+    static let textSecondary = Color(red: 0.28, green: 0.36, blue: 0.47)
 
     var body: some View {
         NavigationStack {
@@ -32,7 +35,8 @@ struct MainView: View {
 
                 VStack(spacing: 16) {
                     Picker("Tab", selection: $tab) {
-                        ForEach(Tab.allCases, id: \.self) { Text($0.rawValue) }
+                        Text("Active (\(viewModel.activeProjects.count))").tag(Tab.active)
+                        Text("Uploaded (\(viewModel.uploadedProjects.count))").tag(Tab.uploaded)
                     }
                     .pickerStyle(.segmented)
 
@@ -69,6 +73,13 @@ struct MainView: View {
             }
         }
         .onAppear { viewModel.reload() }
+        .onChange(of: selectedProject) { _, newValue in
+            // Returning from the details screen: the project may have been
+            // edited or uploaded there — refresh so it lands in the right tab.
+            if newValue == nil {
+                viewModel.reload()
+            }
+        }
         .confirmationDialog(
             "Do you really want to delete the project \(projectToDelete?.name ?? "")?",
             isPresented: Binding(

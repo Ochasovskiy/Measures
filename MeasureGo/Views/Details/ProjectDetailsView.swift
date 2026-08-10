@@ -160,7 +160,7 @@ private struct DetailsTabView: View {
     ) -> some View {
         HStack {
             Text(label)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(MainView.textSecondary)
                 .frame(width: 110, alignment: .leading)
             TextField(placeholder, text: binding(keyPath, filter: filter))
                 .multilineTextAlignment(.trailing)
@@ -317,41 +317,50 @@ private struct PoolTabView: View {
     @State private var isUploading = false
     @State private var uploadError: String?
     @State private var sessionExpired = false
+    @State private var previewScanData: ScanData?
 
     var body: some View {
         VStack(spacing: 16) {
             if let scan = viewModel.project.scan {
-                HStack(spacing: 12) {
-                    Image(systemName: "cube.transparent")
-                        .font(.title2)
-                        .foregroundStyle(MainView.navy)
-                        .frame(width: 44, height: 44)
-                        .background(MainView.background)
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Pool scan")
-                            .font(.headline)
+                Button {
+                    previewScanData = ProjectStore.loadScan(fileName: scan.fileName)
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "cube.transparent")
+                            .font(.title2)
                             .foregroundStyle(MainView.navy)
-                        // Unity stores the scan timestamp in unix seconds.
-                        Text(Date(timeIntervalSince1970: TimeInterval(scan.timeStamp)),
-                             format: .dateTime.day().month().year().hour().minute())
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                        if let scanData = ProjectStore.loadScan(fileName: scan.fileName) {
-                            Text("\(scanData.pointsData.count) points\(scanData.meshString.isEmpty ? "" : " + mesh")")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                            .frame(width: 44, height: 44)
+                            .background(MainView.background)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Pool scan")
+                                .font(.headline)
+                                .foregroundStyle(MainView.navy)
+                            // Unity stores the scan timestamp in unix seconds.
+                            Text(Date(timeIntervalSince1970: TimeInterval(scan.timeStamp)),
+                                 format: .dateTime.day().month().year().hour().minute())
+                                .font(.subheadline)
+                                .foregroundStyle(MainView.textSecondary)
+                            if let scanData = ProjectStore.loadScan(fileName: scan.fileName) {
+                                Text("\(scanData.pointsData.count) points\(scanData.meshString.isEmpty ? "" : " + mesh")")
+                                    .font(.caption)
+                                    .foregroundStyle(MainView.textSecondary)
+                            }
                         }
+                        Spacer()
+                        Image(systemName: "rotate.3d")
+                            .font(.title3)
+                            .foregroundStyle(MainView.salmon)
                     }
-                    Spacer()
+                    .padding(12)
+                    .background(.white)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
                 }
-                .padding(12)
-                .background(.white)
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .buttonStyle(.plain)
                 .padding(.horizontal, 16)
             } else {
                 Text("No scan yet")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(MainView.textSecondary)
                     .padding(.top, 24)
             }
 
@@ -418,6 +427,9 @@ private struct PoolTabView: View {
             ARScanView(project: viewModel.project) { updated in
                 viewModel.project = updated
             }
+        }
+        .fullScreenCover(item: $previewScanData) { scanData in
+            ScanPreviewView(scanData: scanData)
         }
         .alert(
             "Upload failed",

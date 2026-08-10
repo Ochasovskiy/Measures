@@ -26,13 +26,23 @@ final class ARScanViewModel: ObservableObject {
         /// ARKit world position (converted to Unity coordinates on save).
         let position: SIMD3<Float>
         let index: Int
+        let notes: String
     }
 
-    @Published var phase: Phase = .tutorial
+    @Published var phase: Phase = .tutorial {
+        didSet { syncLockedHeight() }
+    }
     @Published private(set) var points: [PlacedPoint] = []
-    @Published var selectedFeatureType: PointType = .none
-    @Published var lockHeight = false
+    @Published var selectedFeatureType: PointType = .none {
+        didSet { syncLockedHeight() }
+    }
+    @Published var lockHeight = false {
+        didSet { syncLockedHeight() }
+    }
     @Published var placementFailed = false
+    /// Notes attached to feature points placed while set (Unity's
+    /// FeatureDetailsPanel notes field).
+    @Published var pointNotes = ""
 
     let controller = ARScanController()
     private let startTime: String
@@ -49,6 +59,18 @@ final class ARScanViewModel: ObservableObject {
     }
 
     var perimeterPoints: [PlacedPoint] { points.filter { $0.type == .perimeter } }
+
+    private var activePointType: PointType {
+        phase == .perimeter ? .perimeter : selectedFeatureType
+    }
+
+    /// Keeps the controller's reticle height in sync with the lock state so
+    /// the target visibly snaps to the height points will be placed at.
+    private func syncLockedHeight() {
+        controller.lockedHeight = lockHeight
+            ? points.last(where: { $0.type == activePointType })?.position.y
+            : nil
+    }
 
     // MARK: - Point placement
 
@@ -67,13 +89,22 @@ final class ARScanViewModel: ObservableObject {
         }
 
         let index = points.filter { $0.type == type }.count + 1
-        let point = PlacedPoint(uuid: UUID().uuidString, type: type, position: position, index: index)
+        let point = PlacedPoint(
+            uuid: UUID().uuidString,
+            type: type,
+            position: position,
+            index: index,
+            // Unity: perimeter points get empty notes; feature points get the
+            // notes text current at placement time.
+            notes: phase == .features ? pointNotes : ""
+        )
         points.append(point)
 
         controller.addMarker(at: position, type: type)
         if type == .perimeter {
             controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: false)
         }
+        syncLockedHeight()
     }
 
     func undoLastPoint() {
@@ -89,6 +120,7 @@ final class ARScanViewModel: ObservableObject {
         if last.type == .perimeter {
             controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: false)
         }
+        syncLockedHeight()
     }
 
     var canUndo: Bool {
@@ -122,6 +154,7 @@ final class ARScanViewModel: ObservableObject {
                 uuid: point.uuid,
                 pointType: point.type,
                 position: .init(x: unity.x, y: unity.y, z: unity.z),
+                notes: point.notes,
                 index: point.index
             )
         }

@@ -62,6 +62,14 @@ enum ProjectStore {
             }
     }
 
+    /// Reloads a single project from disk by its file name.
+    static func loadProject(fileName: String) -> ProjectData? {
+        guard !fileName.isEmpty else { return nil }
+        let url = projectFolder.appendingPathComponent(fileName).appendingPathExtension(msrExtension)
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        return try? JSONDecoder().decode(ProjectData.self, from: data)
+    }
+
     @discardableResult
     static func save(_ project: ProjectData) throws -> URL {
         let fm = FileManager.default

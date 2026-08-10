@@ -86,14 +86,17 @@ enum PointType: Int, Codable, CaseIterable {
         }
     }
 
-    /// Types offered in the feature-point selector (Unity's panel: everything
-    /// real except the perimeter, which has its own phase).
+    /// Types offered in the feature-point selector. Unity's
+    /// PointTypeSelectorPanel whitelists ONLY these two in production (all
+    /// other rows are created hidden) — the portal may not accept the rest,
+    /// so we match the whitelist exactly.
     static var featureTypes: [PointType] {
-        allCases.filter { $0 != .none && $0 != .perimeter }
+        [.anchor, .step]
     }
 }
 
-struct ScanData: Codable {
+struct ScanData: Codable, Identifiable {
+    var id: String { uuid }
 
     struct PointData: Codable {
         var uuid: String

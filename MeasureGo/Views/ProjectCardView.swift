@@ -33,7 +33,7 @@ struct ProjectCardView: View {
                         .lineLimit(1)
                     Text(Self.dateFormatter.string(from: creationDate))
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(MainView.textSecondary)
                 }
 
                 Spacer()
@@ -66,7 +66,7 @@ struct ProjectCardView: View {
                 .frame(width: 56, height: 56)
                 .overlay {
                     Image(systemName: "photo")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(MainView.textSecondary)
                 }
         }
     }

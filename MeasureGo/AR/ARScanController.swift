@@ -26,6 +26,9 @@ final class ARScanController: NSObject, ObservableObject {
     private var lineEntities: [ModelEntity] = []
     private var reticleEntity: Entity?
     private var reticleVisible = false
+    /// When set, the reticle (and placed points) snap to this height —
+    /// Unity's UsePreviousPointHeight made visible.
+    var lockedHeight: Float?
 
     static var isARSupported: Bool { ARWorldTrackingConfiguration.isSupported }
     static var isMeshingSupported: Bool {
@@ -117,8 +120,15 @@ final class ARScanController: NSObject, ObservableObject {
             return
         }
         let t = hit.worldTransform
-        reticleEntity.position = SIMD3<Float>(t.columns.3.x, t.columns.3.y, t.columns.3.z)
-        reticleEntity.orientation = simd_quatf(t)
+        var position = SIMD3<Float>(t.columns.3.x, t.columns.3.y, t.columns.3.z)
+        if let lockedHeight {
+            // Show the point exactly where it would be placed.
+            position.y = lockedHeight
+            reticleEntity.orientation = simd_quatf(angle: 0, axis: [0, 1, 0])
+        } else {
+            reticleEntity.orientation = simd_quatf(t)
+        }
+        reticleEntity.position = position
         reticleEntity.isEnabled = true
     }
 

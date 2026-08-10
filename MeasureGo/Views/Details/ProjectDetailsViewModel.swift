@@ -15,7 +15,9 @@ final class ProjectDetailsViewModel: ObservableObject {
     @Published var project: ProjectData
 
     init(project: ProjectData) {
-        self.project = project
+        // Prefer the current on-disk state: the list can hand us a stale copy
+        // (e.g. opened right after an upload changed the status).
+        self.project = ProjectStore.loadProject(fileName: project.fileName) ?? project
     }
 
     /// Uploaded projects are read-only (Unity's SetLoaded).
