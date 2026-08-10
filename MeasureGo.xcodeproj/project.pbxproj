@@ -401,7 +401,8 @@
 				DEVELOPMENT_TEAM = 6ZSVM4KXB6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan your surroundings in 3D";
+				INFOPLIST_KEY_NSCameraUsageDescription = "The app requires access to the camera to take pictures or record videos with it.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need access to your location to provide relevant services.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
@@ -437,7 +438,8 @@
 				DEVELOPMENT_TEAM = 6ZSVM4KXB6;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_KEY_NSCameraUsageDescription = "Used to scan your surroundings in 3D";
+				INFOPLIST_KEY_NSCameraUsageDescription = "The app requires access to the camera to take pictures or record videos with it.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need access to your location to provide relevant services.";
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
 				INFOPLIST_KEY_UIRequiredDeviceCapabilities = arkit;
