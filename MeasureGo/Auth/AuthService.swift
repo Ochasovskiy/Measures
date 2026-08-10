@@ -33,12 +33,15 @@ final class AuthService: NSObject, ObservableObject {
         state = .checkingToken
         Task {
             if let token = AuthManager.shared.token, !token.isEmpty {
-                if await AuthManager.shared.isTokenValid() {
+                switch await AuthManager.shared.checkToken() {
+                case .valid, .unreachable:
                     // Saved token path: show "Welcome back" + Continue/Logout.
+                    // Offline counts as logged in — projects are local-first.
                     state = .loggedIn(autologin: false)
                     return
+                case .invalid:
+                    AuthManager.shared.clearAuth()
                 }
-                AuthManager.shared.clearAuth()
             }
             state = .idle
         }

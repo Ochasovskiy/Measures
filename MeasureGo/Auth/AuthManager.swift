@@ -71,21 +71,31 @@ final class AuthManager {
         }
     }
 
+    enum TokenStatus {
+        case valid
+        case invalid      // server explicitly rejected the token
+        case unreachable  // network problem — token may still be good
+    }
+
     /// Lightweight token validity check against the Auth0 /userinfo endpoint
     /// (same check Unity's AuthService.CheckTokenValidity performs).
-    func isTokenValid() async -> Bool {
+    /// Distinguishes "rejected" from "couldn't reach the server" so a network
+    /// hiccup doesn't log the user out.
+    func checkToken() async -> TokenStatus {
         guard let token, !token.isEmpty,
-              let url = URL(string: AuthConfig.userInfoEndpoint) else { return false }
+              let url = URL(string: AuthConfig.userInfoEndpoint) else { return .invalid }
 
         var request = URLRequest(url: url)
         request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         do {
             let (_, response) = try await URLSession.shared.data(for: request)
-            guard let http = response as? HTTPURLResponse else { return false }
-            return (200..<300).contains(http.statusCode)
+            guard let http = response as? HTTPURLResponse else { return .unreachable }
+            if (200..<300).contains(http.statusCode) { return .valid }
+            if http.statusCode == 401 || http.statusCode == 403 { return .invalid }
+            return .unreachable
         } catch {
-            return false
+            return .unreachable
         }
     }
 }

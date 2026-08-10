@@ -16,11 +16,7 @@ struct RootView: View {
     var body: some View {
         ZStack {
             if showMain {
-                // Temporary session-inspection screen; the real main (AR) screen
-                // replaces this in a later step.
-                DebugSessionView(authService: authService) {
-                    showMain = false
-                }
+                MainView()
             } else {
                 LoginView(authService: authService) {
                     showMain = true
