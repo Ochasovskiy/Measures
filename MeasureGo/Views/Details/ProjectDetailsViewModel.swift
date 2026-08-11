@@ -56,6 +56,6 @@ final class ProjectDetailsViewModel: ObservableObject {
     }
 
     private func save() {
-        try? ProjectStore.save(&project)
+        _ = try? ProjectStore.save(&project)
     }
 }

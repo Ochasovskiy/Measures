@@ -52,6 +52,14 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
     /// Reverse-geocodes the current fix into a postal address for the
     /// new-project form. Returns nil when there is no fix or no network.
+    ///
+    /// Deliberately still on CLGeocoder despite the iOS 26 deprecation:
+    /// MapKit's replacement (MKReverseGeocodingRequest) returns only
+    /// `fullAddress`/`shortAddress` strings plus city and region — it exposes
+    /// no street, state or postal-code components, which is exactly what this
+    /// form needs. Migrating today would mean string-parsing addresses per
+    /// country and would make the fields less accurate, so we keep the
+    /// deprecated-but-working API until MapKit gains structured components.
     func reverseGeocodeCurrentAddress() async -> ProjectData.Address? {
         guard let location = lastLocation else { return nil }
         do {

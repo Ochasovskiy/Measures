@@ -132,10 +132,22 @@ final class AuthService: NSObject, ObservableObject {
 extension AuthService: ASWebAuthenticationPresentationContextProviding {
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap(\.windows)
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+            if let keyWindow = scenes.flatMap(\.windows).first(where: \.isKeyWindow) {
+                return keyWindow
+            }
+            if let anyWindow = scenes.flatMap(\.windows).first {
+                return anyWindow
+            }
+            // A window detached from any scene cannot present anything, so
+            // build one against a real scene instead of the scene-less
+            // UIWindow() the old fallback used (deprecated in iOS 26).
+            if let scene = scenes.first {
+                return UIWindow(windowScene: scene)
+            }
+            // Unreachable: the system only asks for an anchor while the app is
+            // on screen, which requires a window scene.
+            preconditionFailure("Auth presentation requested with no window scene")
         }
     }
 }
