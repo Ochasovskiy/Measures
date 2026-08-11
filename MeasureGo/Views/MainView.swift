@@ -21,6 +21,7 @@ struct MainView: View {
     @State private var tab: Tab = .active
     @State private var showFeedback = false
     @State private var showLogoutConfirm = false
+    @State private var showCrashPrompt = false
     @State private var projectToDelete: ProjectData?
     @State private var selectedProject: ProjectData?
     @State private var showNewProjectFlow = false
@@ -89,7 +90,22 @@ struct MainView: View {
                 }
             }
         }
-        .onAppear { viewModel.reload() }
+        .onAppear {
+            viewModel.reload()
+            // Ask once per crash: without this, a crash in the field is never
+            // reported and so never fixed.
+            if CrashReporter.shared.previousSessionCrashed || CrashReporter.shared.pendingReportCount > 0 {
+                showCrashPrompt = true
+            }
+        }
+        .alert("The app closed unexpectedly", isPresented: $showCrashPrompt) {
+            Button("Send report") { showFeedback = true }
+            Button("Not now", role: .cancel) {
+                CrashReporter.shared.clearReports()
+            }
+        } message: {
+            Text("Sending the details helps us fix it. Your projects and scans are safe.")
+        }
         .onChange(of: selectedProject) { _, newValue in
             // Returning from the details screen: the project may have been
             // edited or uploaded there — refresh so it lands in the right tab.

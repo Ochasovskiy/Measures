@@ -30,6 +30,9 @@ struct BugReportView: View {
     @State private var email = ""
     @State private var attachLogs = true
     @State private var attachPreviousLogs = true
+    @State private var attachCrashReports = true
+
+    private let crashReportCount = CrashReporter.shared.pendingReportCount
 
     @State private var showValidationAlert = false
     @State private var showMailComposer = false
@@ -82,8 +85,16 @@ struct BugReportView: View {
                         if attachLogs {
                             Toggle("Attach previous session logs", isOn: $attachPreviousLogs)
                         }
+                        if crashReportCount > 0 {
+                            Toggle(
+                                "Attach crash report\(crashReportCount > 1 ? "s" : "") (\(crashReportCount))",
+                                isOn: $attachCrashReports
+                            )
+                        }
                     } footer: {
-                        Text("Logs help us reproduce the problem. They contain app events and device info only.")
+                        Text(crashReportCount > 0
+                             ? "Crash reports contain the stack trace of the failure — they are what make a crash fixable."
+                             : "Logs help us reproduce the problem. They contain app events and device info only.")
                     }
                 }
             }
@@ -138,6 +149,12 @@ struct BugReportView: View {
         }
         AppLog.log("Feedback submitted: \(reportType.rawValue)")
 
+        // The reports have been handed to the user's mail draft; keeping them
+        // would re-attach the same crashes to every future report.
+        if reportType == .bug && attachCrashReports {
+            CrashReporter.shared.clearReports()
+        }
+
         if MFMailComposeViewController.canSendMail() {
             showMailComposer = true
         } else if let url = mailtoURL() {
@@ -153,6 +170,10 @@ struct BugReportView: View {
     private func composeBody() -> String {
         var body = "[\(reportType.rawValue)]\n\(descriptionText)\n\(email)\n\n"
         body += "App: \(AppLog.appVersion)\nDevice: \(AppLog.deviceIdentifier)\n"
+
+        if reportType == .bug && crashReportCount > 0 && attachCrashReports {
+            body += "\n[CRASH REPORTS]\n" + CrashReporter.shared.pendingReportsText()
+        }
 
         if reportType == .bug && attachLogs {
             body += "\n[LOGS]\n" + AppLog.currentLogContent()

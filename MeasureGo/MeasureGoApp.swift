@@ -21,6 +21,7 @@ struct MeasureGoApp: App {
 
     init() {
         AppLog.startSession()
+        CrashReporter.shared.start()
 
         // Brand the segmented controls: selected segment navy with white text.
         let navy = UIColor(red: 0.043, green: 0.145, blue: 0.29, alpha: 1)
@@ -41,10 +42,12 @@ struct MeasureGoApp: App {
                 UIApplication.shared.isIdleTimerDisabled = false
                 ARScanController.forceTorchOff()
                 if newPhase == .background {
+                    // A normal background is not a crash.
+                    CrashReporter.shared.markCleanShutdown()
                     AppLog.log("App entered background")
                 }
             case .active:
-                break
+                CrashReporter.shared.markSessionRunning()
             @unknown default:
                 break
             }

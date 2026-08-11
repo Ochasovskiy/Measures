@@ -9,7 +9,9 @@
 
 import Foundation
 
-enum InputRules {
+/// Pure validation helpers — used from binding setters that are not
+/// main-actor isolated, so opt out of the project's default isolation.
+nonisolated enum InputRules {
 
     static let zipMaxLength = 10
     static let phoneMaxDigits = 15 // E.164
