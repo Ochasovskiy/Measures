@@ -61,8 +61,11 @@ struct BugReportView: View {
                 }
 
                 Section {
-                    TextField("your@email.com", text: $email)
+                    // Plain wording: an email-shaped placeholder gets
+                    // link-styled (blue) by iOS, unlike the other fields.
+                    TextField("Email address", text: $email)
                         .keyboardType(.emailAddress)
+                        .textContentType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                 } header: {
@@ -86,6 +89,16 @@ struct BugReportView: View {
             }
             .navigationTitle("Send feedback")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                // Pre-fill with the signed-in user's address (cached from
+                // /users/me; fetched here if an older session never cached it).
+                guard email.isEmpty else { return }
+                if let cached = AuthManager.shared.userEmail, !cached.isEmpty {
+                    email = cached
+                } else if let user = await AuthManager.shared.fetchCurrentUser() {
+                    email = user.email ?? ""
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

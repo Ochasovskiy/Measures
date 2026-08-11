@@ -27,6 +27,7 @@ final class AuthManager {
 
     private let tokenKey = "auth_token_latham"
     private let userIdKey = "user_id_latham"
+    private let userEmailKey = "user_email_latham"
 
     var token: String? {
         get { KeychainStorage.getString(tokenKey) }
@@ -44,9 +45,23 @@ final class AuthManager {
         }
     }
 
+    /// Signed-in user's email, cached from /users/me — used to pre-fill the
+    /// feedback form.
+    var userEmail: String? {
+        get { KeychainStorage.getString(userEmailKey) }
+        set {
+            if let newValue, !newValue.isEmpty {
+                KeychainStorage.setString(newValue, forKey: userEmailKey)
+            } else {
+                KeychainStorage.remove(userEmailKey)
+            }
+        }
+    }
+
     func clearAuth() {
         token = nil
         userId = nil
+        userEmail = nil
     }
 
     /// Validates the stored token against the Latham backend and caches the user id.
@@ -65,6 +80,7 @@ final class AuthManager {
             }
             let userInfo = try JSONDecoder().decode(UserInfoResponse.self, from: data)
             userId = userInfo.id
+            userEmail = userInfo.email
             return userInfo
         } catch {
             return nil
