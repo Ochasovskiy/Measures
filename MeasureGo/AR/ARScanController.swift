@@ -28,6 +28,9 @@ final class ARScanController: NSObject, ObservableObject {
     private var lineEntities: [ModelEntity] = []
     private var reticleEntity: Entity?
     private var reticleVisible = false
+    private var sceneUpdateSubscription: Cancellable?
+    /// Smoothed reticle position, so a noisy raycast doesn't make it twitch.
+    private var smoothedReticlePosition: SIMD3<Float>?
     /// When set, the reticle (and placed points) snap to this height —
     /// Unity's UsePreviousPointHeight made visible.
     var lockedHeight: Float?
@@ -40,6 +43,9 @@ final class ARScanController: NSObject, ObservableObject {
     // MARK: - Session
 
     func attach(to arView: ARView) {
+        // Re-attaching to the same view would re-run the session with
+        // .resetTracking and wipe the mesh collected so far.
+        guard self.arView !== arView else { return }
         self.arView = arView
         arView.session.delegate = self
 
@@ -51,6 +57,13 @@ final class ARScanController: NSObject, ObservableObject {
         reticle.isEnabled = false
         anchor.addChild(reticle)
         reticleEntity = reticle
+
+        // Drive the reticle from RealityKit's render loop rather than from
+        // session(_:didUpdate:) — per-frame work in the session delegate makes
+        // ARKit queue up (and warn about) retained ARFrames.
+        sceneUpdateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
+            self?.updateReticle(deltaTime: Float(event.deltaTime))
+        }
 
         let config = ARWorldTrackingConfiguration()
         config.planeDetection = [.horizontal]
@@ -93,9 +106,13 @@ final class ARScanController: NSObject, ObservableObject {
 
     func setTorch(_ on: Bool) {
         guard let device = AVCaptureDevice.default(for: .video), device.hasTorch else { return }
+        let desiredMode: AVCaptureDevice.TorchMode = on ? .on : .off
+        // Leaving the scan screen calls this on every exit path; don't buzz,
+        // log, or touch the device when nothing actually changes.
+        guard device.torchMode != desiredMode || isTorchOn != on else { return }
         do {
             try device.lockForConfiguration()
-            device.torchMode = on ? .on : .off
+            device.torchMode = desiredMode
             device.unlockForConfiguration()
             isTorchOn = on
             Haptics.selection()
@@ -146,9 +163,11 @@ final class ARScanController: NSObject, ObservableObject {
         return root
     }
 
-    /// Called every frame: keeps the reticle glued to the surface under the
-    /// screen center.
-    fileprivate func updateReticle() {
+    /// Runs once per rendered frame (SceneEvents.Update), so the reticle is
+    /// locked to the display refresh rate — 60 or 120 Hz — with no beating
+    /// between update and render rates. Safe here because, unlike the
+    /// ARSession delegate, this path never holds on to ARFrames.
+    fileprivate func updateReticle(deltaTime: Float = 1.0 / 60.0) {
         guard reticleVisible, let reticleEntity else { return }
         guard let arView else {
             reticleEntity.isEnabled = false
@@ -158,18 +177,31 @@ final class ARScanController: NSObject, ObservableObject {
         guard let hit = arView.raycast(from: center, allowing: .estimatedPlane, alignment: .any).first
         else {
             reticleEntity.isEnabled = false
+            smoothedReticlePosition = nil
             return
         }
         let t = hit.worldTransform
-        var position = SIMD3<Float>(t.columns.3.x, t.columns.3.y, t.columns.3.z)
+        var target = SIMD3<Float>(t.columns.3.x, t.columns.3.y, t.columns.3.z)
         if let lockedHeight {
             // Show the point exactly where it would be placed.
-            position.y = lockedHeight
+            target.y = lockedHeight
             reticleEntity.orientation = simd_quatf(angle: 0, axis: [0, 1, 0])
         } else {
             reticleEntity.orientation = simd_quatf(t)
         }
-        reticleEntity.position = position
+
+        // Frame-rate independent smoothing (~20 ms time constant): removes
+        // single-frame raycast jitter while staying visually immediate, and
+        // behaves identically at 60 and 120 Hz. Snap on first acquisition
+        // rather than gliding in from a stale position.
+        if let current = smoothedReticlePosition {
+            let alpha = 1 - exp(-deltaTime / 0.02)
+            smoothedReticlePosition = current + (target - current) * alpha
+        } else {
+            smoothedReticlePosition = target
+        }
+
+        reticleEntity.position = smoothedReticlePosition ?? target
         reticleEntity.isEnabled = true
     }
 
@@ -236,9 +268,15 @@ final class ARScanController: NSObject, ObservableObject {
     // MARK: - Mesh export (Unity SaveMesh.MeshToStr format)
 
     /// Combines all LiDAR mesh anchors into one mesh (world space, Unity
-    /// coordinates) and serializes it exactly like Unity's SaveMesh:
-    /// vertices 'm|' normals 'm|' triangles 'm|' indices 'm|' topology 'm|' color
+    /// coordinates) and serializes it in the SaveMesh text format:
+    /// vertices 'm|' normals 'm|' triangles 'm|' topology 'm|' color
     /// with vertices/normals joined by 'v|'/'n|' as "x y z".
+    ///
+    /// Deviation from Unity: Unity also wrote the index list a second time
+    /// (its GetIndices(0) section), identical to the triangle list. Nothing
+    /// reads it — dropping it makes files ~30% smaller, and that budget is
+    /// spent on keeping more geometry instead. MeshDatParser reads the
+    /// leading sections only, so scans written by either format still load.
     func exportUnityMeshString() -> String? {
         guard let frame = arView?.session.currentFrame else { return nil }
         let meshAnchors = frame.anchors.compactMap { $0 as? ARMeshAnchor }
@@ -274,6 +312,15 @@ final class ARScanController: NSObject, ObservableObject {
             }
         }
 
+        // Decimate before writing (Unity ran a 0.5 simplification here).
+        let sourceTriangleCount = triangles.count / 3
+        let decimated = MeshDecimator.decimateToBudget(
+            MeshDecimator.Mesh(vertices: vertices, normals: normals, triangles: triangles))
+        vertices = decimated.vertices
+        normals = decimated.normals
+        triangles = decimated.triangles
+        AppLog.log("Mesh decimated: \(sourceTriangleCount) -> \(triangles.count / 3) triangles, \(vertices.count) vertices")
+
         func fmt(_ v: Float) -> String {
             String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), v)
         }
@@ -284,10 +331,7 @@ final class ARScanController: NSObject, ObservableObject {
         sb += "m|"
         sb += normals.map { "\(fmt($0.x)) \(fmt($0.y)) \(fmt($0.z))" }.joined(separator: "n|")
         sb += "m|"
-        let triangleStr = triangles.map(String.init).joined(separator: " ")
-        sb += triangleStr
-        sb += "m|"
-        sb += triangleStr // Unity writes GetIndices(0), identical to triangles here
+        sb += triangles.map(String.init).joined(separator: " ")
         sb += "m|"
         sb += "Triangles"
         sb += "m|"
@@ -308,9 +352,6 @@ extension ARScanController: ARSessionDelegate {
         }
     }
 
-    func session(_ session: ARSession, didUpdate frame: ARFrame) {
-        updateReticle()
-    }
 }
 
 // MARK: - ARMeshGeometry buffer access

@@ -13,6 +13,10 @@ import UIKit
 @main
 struct MeasureGoApp: App {
 
+    /// Only supplies the supported-orientation mask; SwiftUI still owns the
+    /// window and lifecycle.
+    @UIApplicationDelegateAdaptor(OrientationDelegate.self) private var orientationDelegate
+
     @Environment(\.scenePhase) private var scenePhase
 
     init() {

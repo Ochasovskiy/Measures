@@ -2,9 +2,13 @@
 //  MeshDatParser.swift
 //  MeasureGo
 //
-//  Parses the Unity SaveMesh .dat text format written by both the Unity app
-//  and our ARScanController:
-//  vertices('v|') 'm|' normals('n|') 'm|' triangles 'm|' indices 'm|' topology 'm|' color
+//  Parses the SaveMesh .dat text format.
+//
+//  Unity wrote:  vertices 'm|' normals 'm|' triangles 'm|' indices 'm|' topology 'm|' color
+//  We now write: vertices 'm|' normals 'm|' triangles 'm|' topology 'm|' color
+//  (the index list duplicated the triangle list; see ARScanController).
+//  Only the first three sections are read, so both layouts load — scans made
+//  by the Unity app or by earlier builds still open.
 //
 
 import Foundation

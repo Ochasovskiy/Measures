@@ -41,17 +41,27 @@ struct ARScanView: View {
         .onChange(of: viewModel.phase) { _, newPhase in
             // The 3D reticle tracks the raycast hit only while placing points.
             viewModel.controller.setReticleVisible(newPhase != .tutorial)
+            // Draw the scanned mesh only while scanning: it shows coverage
+            // there, but during placement it just obscures the pool edge and
+            // costs real GPU time on a large scan (ARKit was reporting
+            // "performance affected by resource constraints"). Raycasting is
+            // unaffected — it uses scene understanding, not this overlay.
+            viewModel.controller.setMeshVisualizationVisible(newPhase == .tutorial)
         }
         .onAppear {
             // Scanning is hands-busy and touch-free for minutes at a time —
             // keep the screen awake here only, not app-wide.
             UIApplication.shared.isIdleTimerDisabled = true
+            // Rotating mid-scan re-creates the AR view, which restarts the
+            // session and discards every mesh anchor collected so far.
+            OrientationLock.mask = .portrait
         }
         .onDisappear {
             // Leaving the scan screen by any route must end the session, the
             // torch, and the screen-awake lock — including swipe-away and the
             // Congratulations OK.
             UIApplication.shared.isIdleTimerDisabled = false
+            OrientationLock.mask = .all
             viewModel.controller.pauseSession()
             ARScanController.forceTorchOff()
         }

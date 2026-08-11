@@ -192,7 +192,7 @@ final class ARScanViewModel: ObservableObject {
 
         // 3. Update the project (.msr).
         updated.scan = .init(fileName: savedName, uuid: scanUuid, timeStamp: timeStamp)
-        try? ProjectStore.save(&updated)
+        _ = try? ProjectStore.save(&updated)
 
         AppLog.log("Scan saved: \(pointsData.count) points, mesh: \(meshFileName.isEmpty ? "none" : meshFileName)")
         Haptics.success()
