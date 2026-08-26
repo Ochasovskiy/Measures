@@ -184,8 +184,7 @@ struct ARScanView: View {
                 Button {
                     if viewModel.phase == .features {
                         viewModel.phase = .perimeter
-                        viewModel.controller.rebuildLines(
-                            through: viewModel.perimeterPoints.map(\.position), closeLoop: false)
+                        viewModel.controller.rebuildLines(closeLoop: false)
                     } else {
                         viewModel.phase = .tutorial
                     }

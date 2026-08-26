@@ -22,10 +22,33 @@ final class ARScanController: NSObject, ObservableObject {
     @Published private(set) var meshChunkCount = 0
     @Published private(set) var isTorchOn = false
 
+    /// A placed point, pinned to the real world by its own ARAnchor — Unity's
+    /// PointPlace.CreateAndAttachAnchor re-parented each marker to one for the
+    /// same reason. ARKit nudges the anchor as it refines its map, so the
+    /// marker stays on the surface it was placed on instead of sliding off it.
+    private struct PlacedMarker {
+        /// Replaced whenever ARKit hands back a refined copy of the anchor.
+        var anchor: ARAnchor
+        let type: PointType
+        let entity: ModelEntity
+
+        var position: SIMD3<Float> {
+            let c = anchor.transform.columns.3
+            return SIMD3(c.x, c.y, c.z)
+        }
+    }
+
     private(set) weak var arView: ARView?
     private var worldAnchor: AnchorEntity?
-    private var pointMarkers: [ModelEntity] = []
+    private var placedMarkers: [PlacedMarker] = []
+    /// Identifiers of the anchors we own, so the session delegate can ignore
+    /// the LiDAR mesh anchors it is flooded with while scanning.
+    private var pointAnchorIDs: Set<UUID> = []
     private var lineEntities: [ModelEntity] = []
+    /// Set when a correction moved a perimeter marker; the render loop then
+    /// rebuilds the lines once for the frame rather than once per update.
+    private var linesNeedRebuild = false
+    private var linesClosed = false
     private var reticleEntity: Entity?
     private var reticleVisible = false
     private var sceneUpdateSubscription: Cancellable?
@@ -62,7 +85,9 @@ final class ARScanController: NSObject, ObservableObject {
         // session(_:didUpdate:) — per-frame work in the session delegate makes
         // ARKit queue up (and warn about) retained ARFrames.
         sceneUpdateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
-            self?.updateReticle(deltaTime: Float(event.deltaTime))
+            guard let self else { return }
+            if linesNeedRebuild { rebuildLines(closeLoop: linesClosed) }
+            updateReticle(deltaTime: Float(event.deltaTime))
         }
 
         let config = ARWorldTrackingConfiguration()
@@ -219,31 +244,55 @@ final class ARScanController: NSObject, ObservableObject {
     }
 
     func addMarker(at position: SIMD3<Float>, type: PointType) {
-        guard let worldAnchor else { return }
+        guard let worldAnchor, let arView else { return }
+
+        // Give the point its own ARAnchor before drawing it, so ARKit starts
+        // tracking that spot as a place in the room rather than a coordinate.
+        var transform = matrix_identity_float4x4
+        transform.columns.3 = SIMD4<Float>(position, 1)
+        let anchor = ARAnchor(name: "MeasureGoPoint", transform: transform)
+        arView.session.add(anchor: anchor)
+
         let sphere = ModelEntity(
             mesh: .generateSphere(radius: 0.025),
             materials: [UnlitMaterial(color: type.uiColor)]
         )
         sphere.position = position
         worldAnchor.addChild(sphere)
-        pointMarkers.append(sphere)
+
+        placedMarkers.append(PlacedMarker(anchor: anchor, type: type, entity: sphere))
+        pointAnchorIDs.insert(anchor.identifier)
     }
 
     func removeLastMarker() {
-        pointMarkers.popLast()?.removeFromParent()
+        guard let last = placedMarkers.popLast() else { return }
+        last.entity.removeFromParent()
+        pointAnchorIDs.remove(last.anchor.identifier)
+        // Unity's RemoveLastPoint dropped the anchor with the point; leaving it
+        // behind would keep ARKit tracking a spot nothing references.
+        arView?.session.remove(anchor: last.anchor)
     }
 
     func clearMarkersAndLines() {
-        pointMarkers.forEach { $0.removeFromParent() }
-        pointMarkers.removeAll()
-        rebuildLines(through: [], closeLoop: false)
+        for marker in placedMarkers {
+            marker.entity.removeFromParent()
+            arView?.session.remove(anchor: marker.anchor)
+        }
+        placedMarkers.removeAll()
+        pointAnchorIDs.removeAll()
+        rebuildLines(closeLoop: false)
     }
 
-    /// Rebuilds the polyline connecting the given points (Unity's
-    /// LinesController.SetupLine).
-    func rebuildLines(through points: [SIMD3<Float>], closeLoop: Bool) {
+    /// Rebuilds the polyline through the perimeter markers (Unity's
+    /// LinesController.SetupLine, which likewise read the markers' live
+    /// transforms so the line followed their corrections).
+    func rebuildLines(closeLoop: Bool) {
+        linesClosed = closeLoop
+        linesNeedRebuild = false
         lineEntities.forEach { $0.removeFromParent() }
         lineEntities.removeAll()
+
+        let points = placedMarkers.filter { $0.type == .perimeter }.map(\.position)
         guard let worldAnchor, points.count >= 2 else { return }
 
         var segments = Array(zip(points, points.dropFirst()))
@@ -352,6 +401,26 @@ extension ARScanController: ARSessionDelegate {
         }
     }
 
+    /// ARKit refines its map as the scan goes on and moves anchors to match;
+    /// this is where a placed marker follows the surface it was pinned to.
+    /// Called on the main queue (the session has no custom delegate queue),
+    /// which is where RealityKit entities must be touched.
+    ///
+    /// This runs constantly during meshing — every LiDAR chunk is an anchor —
+    /// so it bails out before doing any work when none of the anchors are ours.
+    func session(_ session: ARSession, didUpdate anchors: [ARAnchor]) {
+        guard !pointAnchorIDs.isEmpty else { return }
+
+        for anchor in anchors where pointAnchorIDs.contains(anchor.identifier) {
+            guard let index = placedMarkers.firstIndex(
+                where: { $0.anchor.identifier == anchor.identifier }) else { continue }
+            // ARKit hands back a fresh anchor object, so keep the new one —
+            // it is also what session.remove(anchor:) needs on undo.
+            placedMarkers[index].anchor = anchor
+            placedMarkers[index].entity.position = placedMarkers[index].position
+            if placedMarkers[index].type == .perimeter { linesNeedRebuild = true }
+        }
+    }
 }
 
 // MARK: - ARMeshGeometry buffer access

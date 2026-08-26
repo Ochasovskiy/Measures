@@ -103,7 +103,7 @@ final class ARScanViewModel: ObservableObject {
 
         controller.addMarker(at: position, type: type)
         if type == .perimeter {
-            controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: false)
+            controller.rebuildLines(closeLoop: false)
         }
         syncLockedHeight()
         // Fired after the position is captured — cannot affect the point.
@@ -122,7 +122,7 @@ final class ARScanViewModel: ObservableObject {
         Haptics.selection()
         controller.removeLastMarker()
         if last.type == .perimeter {
-            controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: false)
+            controller.rebuildLines(closeLoop: false)
         }
         syncLockedHeight()
     }
@@ -133,7 +133,7 @@ final class ARScanViewModel: ObservableObject {
     }
 
     func finishPerimeter() {
-        controller.rebuildLines(through: perimeterPoints.map(\.position), closeLoop: true)
+        controller.rebuildLines(closeLoop: true)
         phase = .features
     }
 
