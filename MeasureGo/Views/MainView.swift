@@ -98,7 +98,10 @@ struct MainView: View {
                 showCrashPrompt = true
             }
         }
-        .alert("The app closed unexpectedly", isPresented: $showCrashPrompt) {
+        // Deliberately "ended unexpectedly", not "crashed": the same signal is
+        // raised by a dead battery or a reboot mid-scan, where nothing actually
+        // went wrong.
+        .alert("The last session ended unexpectedly", isPresented: $showCrashPrompt) {
             Button("Send report") { showFeedback = true }
             Button("Not now", role: .cancel) {
                 CrashReporter.shared.clearReports()
