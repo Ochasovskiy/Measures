@@ -87,13 +87,13 @@ struct BugReportView: View {
                         }
                         if crashReportCount > 0 {
                             Toggle(
-                                "Attach crash report\(crashReportCount > 1 ? "s" : "") (\(crashReportCount))",
+                                "Attach diagnostic report\(crashReportCount > 1 ? "s" : "") (\(crashReportCount))",
                                 isOn: $attachCrashReports
                             )
                         }
                     } footer: {
                         Text(crashReportCount > 0
-                             ? "Crash reports contain the stack trace of the failure — they are what make a crash fixable."
+                             ? "Diagnostic reports record how the session ended — they are what make a problem fixable."
                              : "Logs help us reproduce the problem. They contain app events and device info only.")
                     }
                 }
@@ -172,7 +172,7 @@ struct BugReportView: View {
         body += "App: \(AppLog.appVersion)\nDevice: \(AppLog.deviceIdentifier)\n"
 
         if reportType == .bug && crashReportCount > 0 && attachCrashReports {
-            body += "\n[CRASH REPORTS]\n" + CrashReporter.shared.pendingReportsText()
+            body += "\n[DIAGNOSTIC REPORTS]\n" + CrashReporter.shared.pendingReportsText()
         }
 
         if reportType == .bug && attachLogs {

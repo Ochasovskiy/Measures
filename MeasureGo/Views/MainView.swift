@@ -107,7 +107,7 @@ struct MainView: View {
                 CrashReporter.shared.clearReports()
             }
         } message: {
-            Text("Sending the details helps us fix it. Your projects and scans are safe.")
+            Text("Sending the details helps us find out why. Your projects and scans are safe.")
         }
         .onChange(of: selectedProject) { _, newValue in
             // Returning from the details screen: the project may have been
