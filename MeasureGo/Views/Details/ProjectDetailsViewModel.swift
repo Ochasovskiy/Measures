@@ -36,7 +36,7 @@ final class ProjectDetailsViewModel: ObservableObject {
     func addPhoto(_ image: UIImage) {
         let uuid = UUID().uuidString
         let fileName = ProjectStore.photoFileName(uuid: uuid, counter: project.totalPhotosAdded)
-        guard let savedName = try? ProjectStore.savePNG(image, fileName: fileName) else { return }
+        guard let savedName = try? ProjectStore.savePhoto(image, fileName: fileName) else { return }
         project.addPhoto(fileName: savedName, uuid: uuid)
         // First photo also becomes the project's main photo.
         if project.photoFileName.isEmpty {

@@ -64,7 +64,7 @@ final class NewProjectViewModel: ObservableObject {
     }
 
     /// Mirrors FsmMain.SaveProject: builds ProjectData, stores the photos as
-    /// image-<n>-<uuid>.png, saves the .msr file.
+    /// image-<n>-<uuid>.jpg, saves the .msr file.
     func save() throws -> ProjectData {
         var project = ProjectData()
         project.name = projectName
@@ -79,7 +79,7 @@ final class NewProjectViewModel: ObservableObject {
         for (index, image) in photos.enumerated() {
             let uuid = UUID().uuidString
             let fileName = ProjectStore.photoFileName(uuid: uuid, counter: project.totalPhotosAdded)
-            let savedName = try ProjectStore.savePNG(image, fileName: fileName)
+            let savedName = try ProjectStore.savePhoto(image, fileName: fileName)
             if index == 0 {
                 project.setMainPhotoInfo(photoName: savedName, photoUuid: uuid)
             }
