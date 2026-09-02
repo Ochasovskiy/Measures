@@ -333,6 +333,9 @@ private struct PoolTabView: View {
     @State private var uploadError: String?
     @State private var sessionExpired = false
     @State private var previewScanData: ScanData?
+    @State private var isPreparingArchive = false
+    @State private var archiveError: String?
+    @State private var archiveToShare: ArchiveShareItem?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -408,9 +411,9 @@ private struct PoolTabView: View {
 
                     if viewModel.hasScan {
                         Button {
-                            startUpload()
+                            startArchiveShare()
                         } label: {
-                            Label("Upload", systemImage: "icloud.and.arrow.up")
+                            Label("Share archive", systemImage: "square.and.arrow.up")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
@@ -422,14 +425,14 @@ private struct PoolTabView: View {
             }
         }
         .overlay {
-            if isUploading {
+            if isUploading || isPreparingArchive {
                 ZStack {
                     Color.black.opacity(0.45).ignoresSafeArea()
                     VStack(spacing: 16) {
                         ProgressView()
                             .controlSize(.large)
                             .tint(.white)
-                        Text("Please wait\nUploading")
+                        Text(isPreparingArchive ? "Please wait\nPreparing archive" : "Please wait\nUploading")
                             .font(.headline)
                             .foregroundStyle(.white)
                             .multilineTextAlignment(.center)
@@ -464,6 +467,40 @@ private struct PoolTabView: View {
         } message: {
             Text("Please log out and log in again, then retry the upload.")
         }
+        .alert(
+            "Could not create the archive",
+            isPresented: Binding(
+                get: { archiveError != nil },
+                set: { if !$0 { archiveError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { archiveError = nil }
+        } message: {
+            Text(archiveError ?? "")
+        }
+        .sheet(item: $archiveToShare) { item in
+            ActivityView(url: item.url)
+        }
+    }
+
+    /// Packs the project into a tar.gz and hands it to the system share sheet.
+    /// The project is not marked uploaded — nothing has reached the portal.
+    private func startArchiveShare() {
+        isPreparingArchive = true
+        Task {
+            do {
+                let url = try await UploadService.prepareArchiveForSharing(
+                    project: viewModel.project)
+                isPreparingArchive = false
+                archiveToShare = ArchiveShareItem(url: url)
+                Haptics.success()
+            } catch {
+                isPreparingArchive = false
+                archiveError = error.localizedDescription
+                AppLog.log("Archive failed: \(error.localizedDescription)")
+                Haptics.error()
+            }
+        }
     }
 
     private func startUpload() {
@@ -492,4 +529,23 @@ private struct PoolTabView: View {
             isUploading = false
         }
     }
+}
+
+// MARK: - Share sheet
+
+private struct ArchiveShareItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+/// The system share sheet, so an archive can leave the phone by whatever route
+/// the rep already uses — Mail, Files, AirDrop.
+private struct ActivityView: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }

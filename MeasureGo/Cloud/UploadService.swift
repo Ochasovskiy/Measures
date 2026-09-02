@@ -18,9 +18,37 @@ enum UploadService {
         let revision: Int
     }
 
-    /// Builds the temp directory + archive and uploads everything.
-    /// Returns the project with status = true on full success.
-    static func upload(project: ProjectData) async throws -> ProjectData {
+    /// A project staged on disk in the folder layout the portal expects, plus
+    /// the tar.gz of that layout. Either upload it, or share the archive
+    /// straight off the device — both start from the same staged tree, so the
+    /// file a field rep shares is byte-identical to what the portal receives.
+    struct PreparedProject {
+        let stagingDir: URL
+        let archiveURL: URL
+        let projectId: String
+        let projectJSON: Data
+        let uploadItems: [UploadItem]
+
+        /// The staged tree is only needed while its individual files are being
+        /// uploaded — the archive already holds a copy of all of it.
+        func removeStagingDirectory() {
+            try? FileManager.default.removeItem(at: stagingDir)
+        }
+
+        func removeArchive() {
+            try? FileManager.default.removeItem(at: archiveURL)
+        }
+    }
+
+    /// Stages the project and writes the archive, without touching the network.
+    ///
+    /// - Parameter archiveDestination: where to write the tar.gz. Defaults to
+    ///   Unity's `Documents/Archives/{guid}.tar.gz`, which is the name the
+    ///   portal expects; the share path passes a readable name in tmp instead.
+    static func prepare(
+        project: ProjectData,
+        archiveDestination: URL? = nil
+    ) async throws -> PreparedProject {
         let fm = FileManager.default
         var contract = ProjectDataContract(project: project)
         var uploadItems: [UploadItem] = []
@@ -36,13 +64,6 @@ enum UploadService {
         let archivesDir = ProjectStore.projectFolder.deletingLastPathComponent()
             .appendingPathComponent("Archives", isDirectory: true)
         var archiveURL: URL?
-
-        defer {
-            try? fm.removeItem(at: tempDir)
-            if let archiveURL {
-                try? fm.removeItem(at: archiveURL) // Unity's _deleteArchive = true
-            }
-        }
 
         do {
             let resourcesDir = tempDir.appendingPathComponent("resources", isDirectory: true)
@@ -173,21 +194,75 @@ enum UploadService {
             try projectJSON.write(
                 to: tempDir.appendingPathComponent("Project-\(safeName)-\(project.id).json"))
 
-            // --- Archive: Documents/Archives/{guid}.tar.gz ---
-            let archive = archivesDir.appendingPathComponent("\(archiveGuid).tar.gz")
+            // --- Archive: tar the staged tree, then gzip it ---
+            let archive = archiveDestination
+                ?? archivesDir.appendingPathComponent("\(archiveGuid).tar.gz")
             try TarGzWriter.createArchive(of: tempDir, to: archive)
             archiveURL = archive
             uploadItems.append(UploadItem(fileURL: archive, resourceId: archiveGuid, revision: 0))
 
-            // --- Upload: project first, then every resource sequentially ---
-            try await CloudAPI.putProject(id: contract.id, jsonData: projectJSON)
-            for item in uploadItems {
-                try await CloudAPI.putResourceFile(
-                    resourceId: item.resourceId,
-                    revision: item.revision,
-                    fileURL: item.fileURL
-                )
+            return PreparedProject(
+                stagingDir: tempDir,
+                archiveURL: archive,
+                projectId: contract.id,
+                projectJSON: projectJSON,
+                uploadItems: uploadItems
+            )
+        } catch {
+            // Never leave a half-written staging tree or archive behind.
+            try? fm.removeItem(at: tempDir)
+            if let archiveURL {
+                try? fm.removeItem(at: archiveURL)
             }
+            throw error
+        }
+    }
+
+    /// Builds the archive for sharing off the device with the system share
+    /// sheet. The staged tree is cleaned up before returning; the caller owns
+    /// the returned file.
+    ///
+    /// Written to tmp rather than Documents/Archives so the system reclaims it
+    /// if a share is abandoned — nothing here deletes it on dismissal, because
+    /// AirDrop can still be reading the file after the sheet closes.
+    static func prepareArchiveForSharing(project: ProjectData) async throws -> URL {
+        let destination = FileManager.default.temporaryDirectory
+            .appendingPathComponent(shareFileName(for: project))
+        try? FileManager.default.removeItem(at: destination)
+
+        let prepared = try await prepare(project: project, archiveDestination: destination)
+        prepared.removeStagingDirectory()
+        AppLog.log("Archive ready to share: \(destination.lastPathComponent)")
+        return prepared.archiveURL
+    }
+
+    /// Readable name for a shared archive — a GUID tells the recipient nothing.
+    private static func shareFileName(for project: ProjectData) -> String {
+        let trimmed = project.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        let illegal = CharacterSet(charactersIn: "/\\:?%*|\"<>")
+        let safe = (trimmed.isEmpty ? "Project" : trimmed)
+            .components(separatedBy: illegal)
+            .joined(separator: "-")
+        return "\(safe)-\(project.id).tar.gz"
+    }
+
+    /// Builds the archive and uploads everything.
+    /// Returns the project with status = true on full success.
+    static func upload(project: ProjectData) async throws -> ProjectData {
+        let prepared = try await prepare(project: project)
+        defer {
+            prepared.removeStagingDirectory()
+            prepared.removeArchive() // Unity's _deleteArchive = true
+        }
+
+        // --- Upload: project first, then every resource sequentially ---
+        try await CloudAPI.putProject(id: prepared.projectId, jsonData: prepared.projectJSON)
+        for item in prepared.uploadItems {
+            try await CloudAPI.putResourceFile(
+                resourceId: item.resourceId,
+                revision: item.revision,
+                fileURL: item.fileURL
+            )
         }
 
         // Success: mark uploaded and persist, like Unity's OnUploaded.
