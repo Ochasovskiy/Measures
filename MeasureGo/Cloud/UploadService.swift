@@ -250,12 +250,26 @@ enum UploadService {
         return "\(safe)-\(project.id).tar.gz"
     }
 
+    struct UploadOutcome {
+        let project: ProjectData
+        /// Set only when `keepArchiveForSharing` was requested: the very file
+        /// the portal just received, moved somewhere shareable. Not a rebuild —
+        /// a second `prepare` would mint new resource GUIDs and timestamps, so
+        /// what you inspected would no longer be what the portal has.
+        let archiveURL: URL?
+    }
+
     /// Builds the archive and uploads everything.
     /// Returns the project with status = true on full success.
-    static func upload(project: ProjectData) async throws -> ProjectData {
+    static func upload(
+        project: ProjectData,
+        keepArchiveForSharing: Bool = false
+    ) async throws -> UploadOutcome {
         let prepared = try await prepare(project: project)
+        var keptArchive: URL?
         defer {
             prepared.removeStagingDirectory()
+            // A no-op when the archive was moved aside just below.
             prepared.removeArchive() // Unity's _deleteArchive = true
         }
 
@@ -269,10 +283,20 @@ enum UploadService {
             )
         }
 
+        if keepArchiveForSharing {
+            let destination = FileManager.default.temporaryDirectory
+                .appendingPathComponent(shareFileName(for: project))
+            try? FileManager.default.removeItem(at: destination)
+            if (try? FileManager.default.moveItem(at: prepared.archiveURL, to: destination)) != nil {
+                keptArchive = destination
+                AppLog.log("Uploaded archive kept for sharing: \(destination.lastPathComponent)")
+            }
+        }
+
         // Success: mark uploaded and persist, like Unity's OnUploaded.
         var updated = project
         updated.status = true
         try ProjectStore.save(&updated)
-        return updated
+        return UploadOutcome(project: updated, archiveURL: keptArchive)
     }
 }

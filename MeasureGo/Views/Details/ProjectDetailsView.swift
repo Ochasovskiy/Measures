@@ -410,6 +410,17 @@ private struct PoolTabView: View {
                     }
 
                     if viewModel.hasScan {
+                        // Uploads, then hands you the exact archive the portal
+                        // received — so the two can be compared in one pass.
+                        Button {
+                            startUpload()
+                        } label: {
+                            Label("Upload", systemImage: "icloud.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(MainView.navy)
+
                         Button {
                             startArchiveShare()
                         } label: {
@@ -517,16 +528,22 @@ private struct PoolTabView: View {
             }
 
             do {
-                let updated = try await UploadService.upload(project: viewModel.project)
-                viewModel.project = updated
-                AppLog.log("Upload complete: \(updated.id)")
+                let outcome = try await UploadService.upload(
+                    project: viewModel.project, keepArchiveForSharing: true)
+                viewModel.project = outcome.project
+                AppLog.log("Upload complete: \(outcome.project.id)")
                 Haptics.success()
+                // Drop the overlay before the sheet, or it covers it.
+                isUploading = false
+                if let archive = outcome.archiveURL {
+                    archiveToShare = ArchiveShareItem(url: archive)
+                }
             } catch {
                 uploadError = error.localizedDescription
                 AppLog.log("Upload failed: \(error.localizedDescription)")
                 Haptics.error()
+                isUploading = false
             }
-            isUploading = false
         }
     }
 }
