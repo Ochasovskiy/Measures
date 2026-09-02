@@ -219,20 +219,49 @@ enum ProjectStore {
 
     // MARK: - Images
 
+    /// Photos are stored as JPEG. A 12 MP iPhone photo is ~17 MB as PNG and
+    /// ~2 MB at this quality, and gzip cannot shrink either — so the photos,
+    /// not the measurements, decide how big a project archive is.
+    ///
+    /// Full resolution is kept; only the codec changes. Photos already on disk
+    /// as .png keep working, because the project records each photo's file name
+    /// with its own extension.
+    static let photoFileExtension = "jpg"
+    private static let photoJPEGQuality: CGFloat = 0.8
+
     static func imageURL(fileName: String) -> URL {
-        let name = fileName.hasSuffix(".png") ? fileName : fileName + ".png"
-        return imagesFolder.appendingPathComponent(name)
+        return imagesFolder.appendingPathComponent(withPhotoExtension(fileName))
+    }
+
+    private static func withPhotoExtension(_ fileName: String) -> String {
+        (fileName as NSString).pathExtension.isEmpty
+            ? "\(fileName).\(photoFileExtension)"
+            : fileName
     }
 
     @discardableResult
-    static func savePNG(_ image: UIImage, fileName: String) throws -> String {
+    static func savePhoto(_ image: UIImage, fileName: String) throws -> String {
         try FileManager.default.createDirectory(at: imagesFolder, withIntermediateDirectories: true)
-        guard let data = image.pngData() else {
+        guard let data = uprighted(image).jpegData(compressionQuality: photoJPEGQuality) else {
             throw CocoaError(.fileWriteUnknown)
         }
-        let name = fileName.hasSuffix(".png") ? fileName : fileName + ".png"
+        let name = withPhotoExtension(fileName)
         try data.write(to: imagesFolder.appendingPathComponent(name), options: .atomic)
         return name
+    }
+
+    /// Redraws a rotated photo so the stored pixels are already the right way
+    /// up. PNG had no orientation tag and so baked the rotation in; JPEG would
+    /// instead record it in EXIF, and anything that ignores EXIF would show the
+    /// photo on its side. Normalizing keeps that decision out of the portal.
+    private static func uprighted(_ image: UIImage) -> UIImage {
+        guard image.imageOrientation != .up else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = image.scale
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: image.size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: image.size))
+        }
     }
 
     static func loadImage(fileName: String) -> UIImage? {

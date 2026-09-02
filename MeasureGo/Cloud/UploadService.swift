@@ -75,12 +75,16 @@ enum UploadService {
 
             let encoder = JSONEncoder()
 
-            // --- Photos -> resources/images/{i}-{uuid}.png + descriptor ---
+            // --- Photos -> resources/images/{i}-{uuid}.{jpg|png} + descriptor ---
             for (i, photo) in project.photos.enumerated() {
                 let source = ProjectStore.imageURL(fileName: photo.fileName)
                 guard fm.fileExists(atPath: source.path) else { continue }
 
-                let photoName = "\(i)-\(photo.uuid).png"
+                // Follow the file that is actually on disk: projects created
+                // before photos moved to JPEG still hold .png.
+                let storedExtension = (photo.fileName as NSString).pathExtension.lowercased()
+                let ext = storedExtension.isEmpty ? ProjectStore.photoFileExtension : storedExtension
+                let photoName = "\(i)-\(photo.uuid).\(ext)"
                 let dest = imagesDir.appendingPathComponent(photoName)
                 try fm.copyItem(at: source, to: dest)
 
@@ -90,7 +94,7 @@ enum UploadService {
                     updateTime: photo.updateTime.isEmpty ? UploadContractTime.now() : photo.updateTime,
                     projectId: project.id,
                     type: "user image",
-                    mimeType: "image/png"
+                    mimeType: ext == "png" ? "image/png" : "image/jpeg"
                 )
                 contract.resources.append(resource)
                 try encoder.encode(resource)
