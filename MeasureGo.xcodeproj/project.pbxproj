@@ -404,6 +404,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = MeasureGo;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSCameraUsageDescription = "The app requires access to the camera to take pictures or record videos with it.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need access to your location to provide relevant services.";
@@ -451,6 +452,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = MeasureGo;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.business";
 				INFOPLIST_KEY_NSCameraUsageDescription = "The app requires access to the camera to take pictures or record videos with it.";
 				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "We need access to your location to provide relevant services.";
