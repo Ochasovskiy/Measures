@@ -26,14 +26,14 @@ struct ARScanView: View {
 
     var body: some View {
         ZStack {
-            if ARScanController.isARSupported {
+            if ARScanController.isDeviceEligible {
                 ARViewContainer(controller: viewModel.controller)
                     .ignoresSafeArea()
             } else {
                 unsupportedView
             }
 
-            if ARScanController.isARSupported {
+            if ARScanController.isDeviceEligible {
                 overlay
             }
         }
@@ -88,6 +88,17 @@ struct ARScanView: View {
             Text("Point the camera at the ground and move the phone slowly, then try again.")
         }
     }
+
+    /// True while placement cannot produce a real measurement: no confident
+    /// surface under the reticle, degraded tracking, or no feature type chosen.
+    /// The only reason to disable the button is the one that predates all of
+    /// this: no feature type chosen yet. Tracking state never disables it —
+    /// gating on that blocked measuring from the very start of a session, and
+    /// a rep standing over a pool cannot do anything with a dead button.
+    private var placementDisabled: Bool {
+        viewModel.phase == .features && viewModel.selectedFeatureType == .none
+    }
+
 
     // MARK: - Phase overlays
 
@@ -288,6 +299,11 @@ struct ARScanView: View {
                     }
                 }
 
+                // Live reading from the last placed point, and — when placement
+                // is blocked — the one line saying why. Both sit directly above
+                // the button they describe.
+                PlacementReadout(controller: viewModel.controller)
+
                 HStack(spacing: 16) {
                     Button {
                         viewModel.undoLastPoint()
@@ -302,19 +318,11 @@ struct ARScanView: View {
                     .disabled(!viewModel.canUndo)
                     .opacity(viewModel.canUndo ? 1 : 0.4)
 
-                    Button {
-                        viewModel.placePoint()
-                    } label: {
-                        Text("Place point")
-                            .font(.headline)
-                            .foregroundStyle(MainView.navy)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 54)
-                            .background(.white)
-                            .clipShape(Capsule())
-                    }
-                    .disabled(viewModel.phase == .features && viewModel.selectedFeatureType == .none)
-                    .opacity(viewModel.phase == .features && viewModel.selectedFeatureType == .none ? 0.5 : 1)
+                    PlacePointButton(
+                        controller: viewModel.controller,
+                        typeMissing: placementDisabled,
+                        action: viewModel.placePoint
+                    )
 
                     Button {
                         nextAction()
@@ -392,10 +400,13 @@ struct ARScanView: View {
             Image(systemName: "arkit")
                 .font(.system(size: 48))
                 .foregroundStyle(MainView.navy)
-            Text("AR is not available on this device")
+            Text("This device can't measure")
                 .font(.headline)
                 .foregroundStyle(MainView.navy)
-            Text("Pool scanning requires an iPhone or iPad with ARKit support (the simulator can't run AR).")
+            // LiDAR is a hard requirement, not a nice-to-have: without a depth
+            // sensor every point would be an estimate against a fitted plane,
+            // and an estimate presented as a measurement is worse than none.
+            Text("Pool scanning needs an iPhone or iPad with a LiDAR scanner — a Pro or Pro Max model. The simulator can't run AR at all.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -449,6 +460,93 @@ private struct MeshCounterView: View {
 }
 
 // MARK: - ARView wrapper
+
+/// Placement is only offered when the reticle is actually on a surface: no
+/// reticle means no measured position to store, so the tap could only produce
+/// a guess or a rejection. Observes the controller directly for the same
+/// reason `PlacementReadout` does — a nested observable does not invalidate
+/// the parent, so reading `hasSurface` from the scan view never updated.
+private struct PlacePointButton: View {
+
+    @ObservedObject var controller: ARScanController
+    /// Set while no feature type has been chosen yet.
+    let typeMissing: Bool
+    let action: () -> Void
+
+    private var disabled: Bool { typeMissing || !controller.hasSurface }
+
+    var body: some View {
+        Button(action: action) {
+            Text("Place point")
+                .font(.headline)
+                .foregroundStyle(MainView.navy)
+                .frame(maxWidth: .infinity)
+                .frame(height: 54)
+                .background(.white)
+                .clipShape(Capsule())
+        }
+        .disabled(disabled)
+        .opacity(disabled ? 0.5 : 1)
+        .animation(.easeInOut(duration: 0.15), value: disabled)
+    }
+}
+
+/// The reading above the Place button.
+///
+/// This observes the controller **directly**, and that is the whole point of
+/// it existing. SwiftUI does not propagate changes through a nested
+/// ObservableObject: the scan view watches the view model, and the controller
+/// is a separate object hanging off it, so publishing `liveDistanceText` never
+/// invalidated anything. The number only appeared to update when placing a
+/// point happened to change the view model and force a redraw — which looked
+/// exactly like a frozen readout between placements.
+///
+/// Observing here also keeps each refresh to this small view instead of
+/// redrawing the entire scan overlay several times a second.
+private struct PlacementReadout: View {
+
+    @ObservedObject var controller: ARScanController
+
+    /// Purely informational: says what is off, never takes an action away.
+    private var statusMessage: String? {
+        if let message = controller.tracking.message { return message }
+        if !controller.hasSurface { return "Aim at a surface to place a point" }
+        return nil
+    }
+
+    private var isVisible: Bool {
+        controller.liveDistanceText != nil
+            || controller.lastSegmentText != nil
+            || statusMessage != nil
+    }
+
+    var body: some View {
+        VStack(spacing: 6) {
+            if let segment = controller.lastSegmentText {
+                Text("Last side  \(segment)")
+                    .font(.subheadline.weight(.medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            if let distance = controller.liveDistanceText, controller.hasSurface {
+                Text(distance)
+                    .font(.title3.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(.white)
+            }
+            if let message = statusMessage {
+                Text(message)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 7)
+        .background(MainView.navy.opacity(0.85))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .opacity(isVisible ? 1 : 0)
+        .animation(.easeInOut(duration: 0.15), value: statusMessage)
+    }
+}
 
 private struct ARViewContainer: UIViewRepresentable {
 

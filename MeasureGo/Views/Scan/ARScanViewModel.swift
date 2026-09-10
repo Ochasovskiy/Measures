@@ -9,6 +9,7 @@
 import Foundation
 import simd
 import Combine
+import QuartzCore
 
 @MainActor
 final class ARScanViewModel: ObservableObject {
@@ -74,11 +75,23 @@ final class ARScanViewModel: ObservableObject {
 
     // MARK: - Point placement
 
+    /// Two points from one intent is worse than a missed tap: the duplicate
+    /// sits on top of its twin, so it is nearly invisible in the AR view and
+    /// only shows up later as a zero-length side in the drawing.
+    private static let minimumPlacementInterval: CFTimeInterval = 0.5
+    private var lastPlacementTime: CFTimeInterval = 0
+
     func placePoint() {
+        let now = CACurrentMediaTime()
+        guard now - lastPlacementTime >= Self.minimumPlacementInterval else { return }
+
         let type: PointType = phase == .perimeter ? .perimeter : selectedFeatureType
         guard type != .none else { return }
 
-        guard var position = controller.raycastFromCenter() else {
+        // The reticle's own position, not a fresh sample — what you see is
+        // what gets stored. Nil means no confident surface or poor tracking,
+        // in which case the button is already disabled and we simply refuse.
+        guard var position = controller.placementPosition else {
             placementFailed = true
             Haptics.warning()
             return
@@ -100,6 +113,9 @@ final class ARScanViewModel: ObservableObject {
             notes: phase == .features ? pointNotes : ""
         )
         points.append(point)
+        // Only a placement that actually happened starts the interval — a tap
+        // rejected for having no surface must not lock out the next one.
+        lastPlacementTime = now
 
         controller.addMarker(at: position, type: type)
         if type == .perimeter {
