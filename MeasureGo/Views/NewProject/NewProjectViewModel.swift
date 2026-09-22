@@ -51,16 +51,10 @@ final class NewProjectViewModel: ObservableObject {
 
     static let maxPhotoCount = 4
 
-    // Unity's per-photo capture tips
-    static let tips = [
-        "Take a minimum of four pictures to best display the pool project",
-        "Take a picture of Side B of the pool",
-        "Take a picture of Side C of the pool",
-        "Take a picture of Side D of the pool",
-    ]
-
+    /// Same tip the camera shows over the live feed, so the form and the
+    /// viewfinder always agree on which side comes next.
     var currentTip: String {
-        Self.tips[min(photos.count, Self.tips.count - 1)]
+        PhotoCaptureView.tip(forPhotosTaken: photos.count)
     }
 
     /// Mirrors FsmMain.SaveProject: builds ProjectData, stores the photos as

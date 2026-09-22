@@ -218,12 +218,14 @@ private struct PhotoStepView: View {
             }
         }
         .fullScreenCover(isPresented: $showCamera) {
-            CameraCaptureView { image in
+            PhotoCaptureView(
+                photoCount: viewModel.photos.count,
+                limit: NewProjectViewModel.maxPhotoCount
+            ) { image in
                 if viewModel.photos.count < NewProjectViewModel.maxPhotoCount {
                     viewModel.photos.append(image)
                 }
             }
-            .ignoresSafeArea()
         }
     }
 

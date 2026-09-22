@@ -260,10 +260,9 @@ private struct PhotosTabView: View {
             }
         }
         .fullScreenCover(isPresented: $showCamera) {
-            CameraCaptureView { image in
+            PhotoCaptureView(photoCount: viewModel.project.photos.count, limit: nil) { image in
                 viewModel.addPhoto(image)
             }
-            .ignoresSafeArea()
         }
         .confirmationDialog(
             "Do you really want to delete the photo?",

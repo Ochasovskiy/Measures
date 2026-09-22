@@ -75,7 +75,9 @@ struct ARScanView: View {
             Button("Save scan") { saveScan() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The mesh and all placed points will be saved to the project.")
+            // Unity asked this before completing. It is the last moment a
+            // missed skimmer or step can be tagged without a rescan.
+            Text("Make sure you've tagged all pool features before completing. The mesh and all placed points will be saved to the project.")
         }
         .alert("Congratulations!", isPresented: $showCongratulations) {
             Button("OK") { dismiss() }
@@ -110,7 +112,10 @@ struct ARScanView: View {
         case .perimeter:
             placementOverlay(
                 title: "Mark the pool perimeter",
-                subtitle: "Aim the center reticle at the pool edge and place points around the perimeter.",
+                // Unity's spacing rule. It decides how faithfully a curved or
+                // freeform pool comes out in the drawing, so it stays on screen
+                // for the whole of placement rather than living in the intro.
+                subtitle: "Straight sections need only a start and end point. On curves, place a point every 6–8\" on a tight radius and every 18–24\" on a wider one.",
                 nextTitle: "Continue",
                 nextEnabled: viewModel.perimeterPoints.count >= 3,
                 nextAction: { viewModel.finishPerimeter() }
@@ -145,19 +150,16 @@ struct ARScanView: View {
                 Text("Scan the pool area")
                     .font(.title3.weight(.bold))
                     .foregroundStyle(MainView.navy)
-                Text("Slowly walk around the pool while pointing the camera at the ground and walls. The detected surface appears as a mesh. When the whole pool is covered, tap Start to place points.")
+                // Unity's field guidance: twice round, and the coping in view —
+                // the coping is exactly what a safety cover attaches to.
+                Text("Walk around the perimeter of the pool twice while scanning. Pay close attention to the coping, showing the edge to the scanner. When the whole pool is covered, tap Start to place points.")
                     .font(.subheadline)
                     .foregroundStyle(MainView.navy)
                     .multilineTextAlignment(.center)
 
-                if ARScanController.isMeshingSupported {
-                    MeshCounterView(controller: viewModel.controller)
-                } else {
-                    Text("This device has no LiDAR — points can still be placed on detected planes, but no mesh will be saved.")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(MainView.salmon)
-                        .multilineTextAlignment(.center)
-                }
+                // Only LiDAR devices ever reach this screen (isDeviceEligible),
+                // so the mesh counter is unconditional.
+                MeshCounterView(controller: viewModel.controller)
 
                 Button {
                     viewModel.phase = .perimeter
