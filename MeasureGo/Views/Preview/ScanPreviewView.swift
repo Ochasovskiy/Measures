@@ -10,11 +10,22 @@
 import SwiftUI
 import SceneKit
 
-struct ScanPreviewView: View {
+struct ScanPreviewView<Footer: View>: View {
 
     let scanData: ScanData
+    /// Optional controls below the model. The scan flow uses this to review
+    /// the shape before moving on, the way Unity showed its preview after the
+    /// perimeter and again before completing; opening a saved scan passes
+    /// nothing and gets the plain viewer.
+    private let footer: Footer
+
     @Environment(\.dismiss) private var dismiss
     @State private var showPointList = false
+
+    init(scanData: ScanData, @ViewBuilder footer: () -> Footer) {
+        self.scanData = scanData
+        self.footer = footer()
+    }
 
     var body: some View {
         ZStack {
@@ -65,6 +76,10 @@ struct ScanPreviewView: View {
                     .padding(.vertical, 8)
                     .background(MainView.navy.opacity(0.85))
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+
+                footer
+                    .padding(.horizontal, 20)
+                    .padding(.top, 12)
                     .padding(.bottom, 24)
             }
         }
@@ -110,7 +125,12 @@ private struct ScenePreviewContainer: UIViewRepresentable {
         view.scene = Self.buildScene(from: scanData)
         view.allowsCameraControl = true
         view.autoenablesDefaultLighting = true
-        view.backgroundColor = UIColor(red: 0.04, green: 0.1, blue: 0.2, alpha: 1)
+        // The app's background grey (#E1E5EC), not a dark scene. Perimeter
+        // points and lines are black — Unity's colours, and the right ones
+        // over a camera feed — but on the old near-black background they were
+        // invisible. A light ground also matches the rest of the app, which is
+        // navy-on-light everywhere else.
+        view.backgroundColor = UIColor(red: 0.882, green: 0.898, blue: 0.925, alpha: 1)
         return view
     }
 
@@ -152,7 +172,9 @@ private struct ScenePreviewContainer: UIViewRepresentable {
 
             let geometry = SCNGeometry(sources: sources, elements: [element])
             let material = SCNMaterial()
-            material.diffuse.contents = UIColor(white: 0.75, alpha: 1)
+            // Darker than before: a pale mesh disappeared against the light
+            // background it now sits on.
+            material.diffuse.contents = UIColor(white: 0.58, alpha: 1)
             material.isDoubleSided = true
             geometry.materials = [material]
             scene.rootNode.addChildNode(SCNNode(geometry: geometry))
@@ -196,9 +218,20 @@ private struct ScenePreviewContainer: UIViewRepresentable {
         }
 
         let cameraNode = SCNNode()
-        cameraNode.camera = SCNCamera()
-        cameraNode.camera?.zFar = 200
-        let distance = max(radius * 2.2, 3)
+        let camera = SCNCamera()
+        camera.zFar = 200
+        camera.fieldOfView = 60
+        // Apply the field of view across the width. On a portrait phone the
+        // automatic setting measures it vertically, so a pool wider than it is
+        // deep ran off both sides of the screen before the user had touched
+        // anything. Fixing it horizontally makes the vertical fit follow.
+        camera.projectionDirection = .horizontal
+        cameraNode.camera = camera
+
+        // Distance that fits a sphere of `radius` inside a 60° cone is
+        // radius / sin(30°) = 2 × radius; the extra 40% is breathing room, and
+        // keeps the shape clear of the overlay at the top and bottom.
+        let distance = max(radius * 2.8, 3)
         cameraNode.position = SCNVector3(center.x, center.y + distance, center.z + distance * 0.35)
         cameraNode.look(
             at: SCNVector3(center.x, center.y, center.z),
@@ -216,10 +249,20 @@ private struct ScenePreviewContainer: UIViewRepresentable {
         guard length > 0.001 else { return nil }
 
         let cylinder = SCNCylinder(radius: 0.012, height: CGFloat(length))
-        cylinder.firstMaterial?.diffuse.contents = UIColor.black
+        // Brand navy (#0B254A) rather than black: reads as the perimeter
+        // rather than as a shadow, and holds up against the mesh behind it.
+        cylinder.firstMaterial?.diffuse.contents =
+            UIColor(red: 0.043, green: 0.145, blue: 0.290, alpha: 1)
         let node = SCNNode(geometry: cylinder)
         node.position = SCNVector3((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2)
         node.look(at: b, up: SCNVector3(0, 1, 0), localFront: SCNVector3(0, 1, 0))
         return node
+    }
+}
+
+extension ScanPreviewView where Footer == EmptyView {
+    /// Plain viewer, for opening a scan that is already saved.
+    init(scanData: ScanData) {
+        self.init(scanData: scanData) { EmptyView() }
     }
 }

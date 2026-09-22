@@ -51,6 +51,7 @@ struct PhotoCaptureView: View {
     let onPhoto: (UIImage) -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     @StateObject private var camera = CameraModel()
 
     private var count: Int { photoCount }
@@ -93,11 +94,13 @@ struct PhotoCaptureView: View {
             if let limit, newCount >= limit { dismiss() }
         }
         .task { await camera.start() }
-        .onAppear { OrientationLock.mask = .portrait }
-        .onDisappear {
-            camera.stop()
-            OrientationLock.mask = .all
-        }
+        // Deliberately does not pin the orientation. Unity's capture screen
+        // produced landscape photos (it cropped the portrait screen and then
+        // rotated the result), and reps are used to shooting a pool side wide.
+        // Letting the screen rotate gets there the honest way: hold the phone
+        // however suits the shot and the photo matches, because the capture
+        // angle comes from gravity via the rotation coordinator.
+        .onDisappear { camera.stop() }
     }
 
     // MARK: - Viewfinder
@@ -154,8 +157,19 @@ struct PhotoCaptureView: View {
 
                 Spacer()
 
-                shutterButton
-                    .padding(.bottom, 12)
+                // Held landscape there is almost no height to spare, and the
+                // shutter falls under the thumb on the trailing edge — the
+                // same place the system camera puts it.
+                if verticalSizeClass == .compact {
+                    HStack {
+                        Spacer()
+                        shutterButton
+                    }
+                    .padding(.bottom, 4)
+                } else {
+                    shutterButton
+                        .padding(.bottom, 12)
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -270,7 +284,6 @@ final class CameraModel: ObservableObject {
     private var device: AVCaptureDevice?
     private weak var previewLayer: AVCaptureVideoPreviewLayer?
     private var rotation: AVCaptureDevice.RotationCoordinator?
-    private var previewAngleObservation: NSKeyValueObservation?
 
     func start() async {
         switch AVCaptureDevice.authorizationStatus(for: .video) {
@@ -296,7 +309,6 @@ final class CameraModel: ObservableObject {
     }
 
     func stop() {
-        previewAngleObservation = nil
         capture.stop()
     }
 
@@ -308,20 +320,13 @@ final class CameraModel: ObservableObject {
         makeRotationCoordinatorIfReady()
     }
 
+    /// Only the capture angle comes from here now. The preview's own rotation
+    /// is set in PreviewView.layoutSubviews, which follows the interface;
+    /// driving it from the coordinator as well would mean two sources fighting
+    /// over the same connection.
     private func makeRotationCoordinatorIfReady() {
         guard rotation == nil, let device, let previewLayer else { return }
-        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
-        rotation = coordinator
-        previewAngleObservation = coordinator.observe(
-            \.videoRotationAngleForHorizonLevelPreview, options: [.initial, .new]
-        ) { [weak previewLayer] coordinator, _ in
-            let angle = coordinator.videoRotationAngleForHorizonLevelPreview
-            DispatchQueue.main.async {
-                guard let connection = previewLayer?.connection,
-                      connection.isVideoRotationAngleSupported(angle) else { return }
-                connection.videoRotationAngle = angle
-            }
-        }
+        rotation = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: previewLayer)
     }
 
     func capture() async {
@@ -464,6 +469,31 @@ private struct CameraPreview: UIViewRepresentable {
         var previewLayer: AVCaptureVideoPreviewLayer {
             // Guaranteed by layerClass above.
             layer as! AVCaptureVideoPreviewLayer
+        }
+
+        /// Rotate the feed to match the interface, here rather than through the
+        /// rotation coordinator's observer. The coordinator reports a
+        /// horizon-level angle that did not follow the UI, so a landscape
+        /// screen still showed an upright 4:3 frame — a narrow portrait strip
+        /// pillarboxed in the middle of the screen. Laying out is exactly when
+        /// the orientation is settled and known.
+        override func layoutSubviews() {
+            super.layoutSubviews()
+            guard let connection = previewLayer.connection else { return }
+
+            // AVFoundation's convention: 0 is landscape-right, 90 portrait.
+            let angle: CGFloat
+            switch window?.windowScene?.effectiveGeometry.interfaceOrientation {
+            case .landscapeLeft: angle = 180
+            case .landscapeRight: angle = 0
+            case .portraitUpsideDown: angle = 270
+            default: angle = 90
+            }
+
+            if connection.isVideoRotationAngleSupported(angle),
+               connection.videoRotationAngle != angle {
+                connection.videoRotationAngle = angle
+            }
         }
     }
 }

@@ -31,6 +31,9 @@ final class ARScanController: NSObject, ObservableObject {
         var anchor: ARAnchor
         let type: PointType
         let entity: ModelEntity
+        /// The floating number above the marker, turned to face the camera
+        /// every frame. Unity numbered its points the same way.
+        let label: Entity
 
         var position: SIMD3<Float> {
             let c = anchor.transform.columns.3
@@ -150,6 +153,12 @@ final class ARScanController: NSObject, ObservableObject {
         sceneUpdateSubscription = arView.scene.subscribe(to: SceneEvents.Update.self) { [weak self] event in
             guard let self else { return }
             if linesNeedRebuild { rebuildLines(closeLoop: linesClosed) }
+            // Outside updateReticle on purpose: the numbers must keep facing
+            // the camera even when the reticle is hidden or a phase has no
+            // reticle at all.
+            if !placedMarkers.isEmpty {
+                faceLabelsToCamera(self.arView?.cameraTransform.translation ?? .zero)
+            }
             updateReticle(deltaTime: Float(event.deltaTime))
         }
 
@@ -475,7 +484,7 @@ final class ARScanController: NSObject, ObservableObject {
 
     // MARK: - Markers
 
-    func addMarker(at position: SIMD3<Float>, type: PointType) {
+    func addMarker(at position: SIMD3<Float>, type: PointType, index: Int) {
         guard let worldAnchor, let arView else { return }
 
         // Length of the side just closed, captured before this point becomes
@@ -498,8 +507,53 @@ final class ARScanController: NSObject, ObservableObject {
         sphere.position = position
         worldAnchor.addChild(sphere)
 
-        placedMarkers.append(PlacedMarker(anchor: anchor, type: type, entity: sphere))
+        // Unity showed each point's number in the AR view (TypedPoint.Init),
+        // which is how a rep confirms they tagged the side they meant to.
+        let label = Self.makeNumberLabel(index)
+        label.position = [0, Self.labelHeight, 0]
+        sphere.addChild(label)
+
+        placedMarkers.append(
+            PlacedMarker(anchor: anchor, type: type, entity: sphere, label: label))
         pointAnchorIDs.insert(anchor.identifier)
+    }
+
+    /// Height of the number above the marker's centre, in metres.
+    private static let labelHeight: Float = 0.055
+
+    private static func makeNumberLabel(_ index: Int) -> Entity {
+        let root = Entity()
+        let mesh = MeshResource.generateText(
+            "\(index)",
+            extrusionDepth: 0.001,
+            // Font size is in metres here, not points: ~5 cm tall.
+            font: .systemFont(ofSize: 0.05, weight: .bold),
+            containerFrame: .zero,
+            alignment: .center,
+            lineBreakMode: .byClipping
+        )
+        let text = ModelEntity(mesh: mesh, materials: [UnlitMaterial(color: .white)])
+        // generateText lays out from a corner, so shift it back by its own
+        // centre to sit squarely above the marker.
+        let bounds = mesh.bounds
+        text.position = [-bounds.center.x, -bounds.center.y, 0]
+        root.addChild(text)
+        return root
+    }
+
+    /// Turns every number to face the camera. Text is drawn on +Z, while
+    /// `look(at:)` aims -Z at the target, so each label is aimed at the point
+    /// mirrored through itself — away from the camera — to end up facing it.
+    private func faceLabelsToCamera(_ cameraPosition: SIMD3<Float>) {
+        for marker in placedMarkers {
+            let labelPosition = marker.entity.position + SIMD3<Float>(0, Self.labelHeight, 0)
+            marker.label.look(
+                at: labelPosition + (labelPosition - cameraPosition),
+                from: labelPosition,
+                upVector: [0, 1, 0],
+                relativeTo: nil
+            )
+        }
     }
 
     func removeLastMarker() {

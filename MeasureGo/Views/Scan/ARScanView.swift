@@ -21,7 +21,8 @@ struct ARScanView: View {
 
     @State private var showTypeSelector = false
     @State private var showNotesEditor = false
-    @State private var showCompleteConfirm = false
+    @State private var showPerimeterReview = false
+    @State private var showCompletionReview = false
     @State private var showCongratulations = false
 
     var body: some View {
@@ -71,13 +72,43 @@ struct ARScanView: View {
         .sheet(isPresented: $showNotesEditor) {
             notesEditorSheet
         }
-        .alert("Complete the scan?", isPresented: $showCompleteConfirm) {
-            Button("Save scan") { saveScan() }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            // Unity asked this before completing. It is the last moment a
-            // missed skimmer or step can be tagged without a rescan.
-            Text("Make sure you've tagged all pool features before completing. The mesh and all placed points will be saved to the project.")
+        // "The result of your perimeter" — the shape you just traced, before
+        // moving on to features.
+        .fullScreenCover(isPresented: $showPerimeterReview) {
+            ScanPreviewView(scanData: viewModel.previewScanData) {
+                VStack(spacing: 10) {
+                    Text("Check the shape against the pool. Go back to add or undo points, or continue to tag features.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(MainView.navy)
+                        .multilineTextAlignment(.center)
+                    Button {
+                        viewModel.finishPerimeter()
+                        showPerimeterReview = false
+                    } label: {
+                        Text("Continue to features")
+                            .font(.headline)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 52)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(MainView.salmon)
+                }
+            }
+        }
+        // Unity's second panel: the preview again, then a deliberate slide.
+        .fullScreenCover(isPresented: $showCompletionReview) {
+            ScanPreviewView(scanData: viewModel.previewScanData) {
+                VStack(spacing: 10) {
+                    Text("Make sure you've tagged all pool features. Once completed, this scan can no longer be edited.")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(MainView.navy)
+                        .multilineTextAlignment(.center)
+                    SlideToConfirm(title: "Slide to complete scan") {
+                        showCompletionReview = false
+                        saveScan()
+                    }
+                }
+            }
         }
         .alert("Congratulations!", isPresented: $showCongratulations) {
             Button("OK") { dismiss() }
@@ -118,7 +149,9 @@ struct ARScanView: View {
                 subtitle: "Straight sections need only a start and end point. On curves, place a point every 6–8\" on a tight radius and every 18–24\" on a wider one.",
                 nextTitle: "Continue",
                 nextEnabled: viewModel.perimeterPoints.count >= 3,
-                nextAction: { viewModel.finishPerimeter() }
+                // Unity reviewed the traced shape before moving on to
+                // features, rather than dropping straight into the next mode.
+                nextAction: { showPerimeterReview = true }
             )
         case .features:
             placementOverlay(
@@ -128,7 +161,7 @@ struct ARScanView: View {
                 subtitle: "Mark anchors and other features of the pool. Change the type any time.",
                 nextTitle: "Complete",
                 nextEnabled: true,
-                nextAction: { showCompleteConfirm = true }
+                nextAction: { showCompletionReview = true }
             )
         }
     }

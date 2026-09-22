@@ -117,7 +117,7 @@ final class ARScanViewModel: ObservableObject {
         // rejected for having no surface must not lock out the next one.
         lastPlacementTime = now
 
-        controller.addMarker(at: position, type: type)
+        controller.addMarker(at: position, type: type, index: index)
         if type == .perimeter {
             controller.rebuildLines(closeLoop: false)
         }
@@ -153,6 +153,34 @@ final class ARScanViewModel: ObservableObject {
         phase = .features
     }
 
+    /// The points as they would be saved, in Unity coordinates.
+    private var pointsDataForSave: [ScanData.PointData] {
+        points.map { point in
+            let unity = ARScanController.unityFromARKit(point.position)
+            return ScanData.PointData(
+                uuid: point.uuid,
+                pointType: point.type,
+                position: .init(x: unity.x, y: unity.y, z: unity.z),
+                notes: point.notes,
+                index: point.index
+            )
+        }
+    }
+
+    /// An unsaved scan for the review screens to render. There is no mesh
+    /// filename because the mesh is not exported until save — and the shape
+    /// of the perimeter is what a rep is checking at this point anyway.
+    var previewScanData: ScanData {
+        ScanData(
+            uuid: "",
+            timeStamp: Int64(Date().timeIntervalSince1970),
+            meshString: "",
+            pointsData: pointsDataForSave,
+            startTime: startTime,
+            endTime: ""
+        )
+    }
+
     // MARK: - Save (Unity FsmScanFeature.OnSaveScanBtnClick)
 
     /// Saves mesh + scan + project and returns the updated project.
@@ -168,16 +196,7 @@ final class ARScanViewModel: ObservableObject {
         }
 
         // 2. ScanData JSON -> Documents/Project/Scans/0-<uuid>.json.
-        let pointsData = points.map { point -> ScanData.PointData in
-            let unity = ARScanController.unityFromARKit(point.position)
-            return ScanData.PointData(
-                uuid: point.uuid,
-                pointType: point.type,
-                position: .init(x: unity.x, y: unity.y, z: unity.z),
-                notes: point.notes,
-                index: point.index
-            )
-        }
+        let pointsData = pointsDataForSave
 
         let scanData = ScanData(
             uuid: scanUuid,
