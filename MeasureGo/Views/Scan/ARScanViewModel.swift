@@ -10,6 +10,8 @@ import Foundation
 import simd
 import Combine
 import QuartzCore
+// For Array.move(fromOffsets:toOffset:), which SwiftUI defines.
+import SwiftUI
 
 @MainActor
 final class ARScanViewModel: ObservableObject {
@@ -26,7 +28,9 @@ final class ARScanViewModel: ObservableObject {
         let type: PointType
         /// ARKit world position (converted to Unity coordinates on save).
         let position: SIMD3<Float>
-        let index: Int
+        /// Per-type 1-based number. Recomputed whenever points are deleted or
+        /// reordered, so the list, the AR labels and the saved CSV agree.
+        var index: Int
         let notes: String
     }
 
@@ -151,6 +155,48 @@ final class ARScanViewModel: ObservableObject {
     func finishPerimeter() {
         controller.rebuildLines(closeLoop: true)
         phase = .features
+    }
+
+    // MARK: - Editing placed points (Unity's PointEditPanel)
+
+    /// Deletes one point. Undo only reaches the most recent point, so without
+    /// this a single bad point early in a long perimeter meant rescanning.
+    /// Matched by uuid: the review list shows saved-shape points, not the
+    /// in-memory ones, and the uuid is what survives that conversion.
+    func deletePoint(matching pointData: ScanData.PointData) {
+        guard let index = points.firstIndex(where: { $0.uuid == pointData.uuid }) else { return }
+        points.remove(at: index)
+        controller.removeMarker(at: index)
+        renumberAndRedraw()
+        Haptics.selection()
+    }
+
+    /// Reorders points. The perimeter is a polygon, so the order of its points
+    /// *is* its shape — this is how a rep fixes a side that zig-zags because
+    /// one point was tagged out of sequence.
+    func movePoints(fromOffsets source: IndexSet, toOffset destination: Int) {
+        points.move(fromOffsets: source, toOffset: destination)
+        controller.moveMarkers(fromOffsets: source, toOffset: destination)
+        renumberAndRedraw()
+    }
+
+    /// Renumbers per type exactly as placement does, then pushes the result to
+    /// the AR labels and the perimeter line.
+    private func renumberAndRedraw() {
+        var counters: [PointType: Int] = [:]
+        var numbers: [Int] = []
+        numbers.reserveCapacity(points.count)
+
+        for i in points.indices {
+            let next = (counters[points[i].type] ?? 0) + 1
+            counters[points[i].type] = next
+            points[i].index = next
+            numbers.append(next)
+        }
+
+        controller.setMarkerNumbers(numbers)
+        controller.rebuildLines()
+        syncLockedHeight()
     }
 
     /// The points as they would be saved, in Unity coordinates.

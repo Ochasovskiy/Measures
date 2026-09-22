@@ -523,6 +523,11 @@ final class ARScanController: NSObject, ObservableObject {
 
     private static func makeNumberLabel(_ index: Int) -> Entity {
         let root = Entity()
+        root.addChild(numberText(index))
+        return root
+    }
+
+    private static func numberText(_ index: Int) -> ModelEntity {
         let mesh = MeshResource.generateText(
             "\(index)",
             extrusionDepth: 0.001,
@@ -537,8 +542,53 @@ final class ARScanController: NSObject, ObservableObject {
         // centre to sit squarely above the marker.
         let bounds = mesh.bounds
         text.position = [-bounds.center.x, -bounds.center.y, 0]
-        root.addChild(text)
-        return root
+        return text
+    }
+
+    // MARK: - Editing placed points
+
+    /// Removes one marker and releases its anchor. `index` is the placement
+    /// position, which is the order the view model keeps its points in.
+    func removeMarker(at index: Int) {
+        guard placedMarkers.indices.contains(index) else { return }
+        lastSegmentText = nil
+        let marker = placedMarkers.remove(at: index)
+        marker.entity.removeFromParent()
+        pointAnchorIDs.remove(marker.anchor.identifier)
+        arView?.session.remove(anchor: marker.anchor)
+    }
+
+    /// Reorders markers without touching their anchors: a reorder changes the
+    /// shape of the perimeter and the numbering, never where a point sits.
+    func moveMarkers(fromOffsets source: IndexSet, toOffset destination: Int) {
+        guard source.allSatisfy({ placedMarkers.indices.contains($0) }) else { return }
+        lastSegmentText = nil
+
+        // Same semantics as SwiftUI's move(fromOffsets:toOffset:) — the view
+        // model applies that to its own points, and the two arrays have to end
+        // up in the same order — written out so the ARKit layer does not have
+        // to import SwiftUI for one method.
+        let moved = source.map { placedMarkers[$0] }
+        let insertionIndex = destination - source.filter { $0 < destination }.count
+        for index in source.sorted(by: >) {
+            placedMarkers.remove(at: index)
+        }
+        placedMarkers.insert(contentsOf: moved, at: min(max(0, insertionIndex), placedMarkers.count))
+    }
+
+    /// Replaces the number floating over each marker; `numbers[i]` belongs to
+    /// the marker at placement position i.
+    func setMarkerNumbers(_ numbers: [Int]) {
+        for (i, marker) in placedMarkers.enumerated() where numbers.indices.contains(i) {
+            marker.label.children.removeAll()
+            marker.label.addChild(Self.numberText(numbers[i]))
+        }
+    }
+
+    /// Redraws the perimeter keeping whatever closure state is current — for
+    /// use after an edit, where the phase has not changed.
+    func rebuildLines() {
+        rebuildLines(closeLoop: linesClosed)
     }
 
     /// Turns every number to face the camera. Text is drawn on +Z, while

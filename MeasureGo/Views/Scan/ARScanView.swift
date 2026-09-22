@@ -75,7 +75,15 @@ struct ARScanView: View {
         // "The result of your perimeter" — the shape you just traced, before
         // moving on to features.
         .fullScreenCover(isPresented: $showPerimeterReview) {
-            ScanPreviewView(scanData: viewModel.previewScanData) {
+            ScanPreviewView(
+                scanData: viewModel.previewScanData,
+                onDeletePoint: { point in
+                    viewModel.deletePoint(matching: point)
+                },
+                onMovePoints: { source, destination in
+                    viewModel.movePoints(fromOffsets: source, toOffset: destination)
+                }
+            ) {
                 VStack(spacing: 10) {
                     Text("Check the shape against the pool. Go back to add or undo points, or continue to tag features.")
                         .font(.footnote.weight(.medium))
@@ -97,7 +105,15 @@ struct ARScanView: View {
         }
         // Unity's second panel: the preview again, then a deliberate slide.
         .fullScreenCover(isPresented: $showCompletionReview) {
-            ScanPreviewView(scanData: viewModel.previewScanData) {
+            ScanPreviewView(
+                scanData: viewModel.previewScanData,
+                onDeletePoint: { point in
+                    viewModel.deletePoint(matching: point)
+                },
+                onMovePoints: { source, destination in
+                    viewModel.movePoints(fromOffsets: source, toOffset: destination)
+                }
+            ) {
                 VStack(spacing: 10) {
                     Text("Make sure you've tagged all pool features. Once completed, this scan can no longer be edited.")
                         .font(.footnote.weight(.medium))

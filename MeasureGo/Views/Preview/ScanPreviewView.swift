@@ -22,8 +22,22 @@ struct ScanPreviewView<Footer: View>: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showPointList = false
 
-    init(scanData: ScanData, @ViewBuilder footer: () -> Footer) {
+    /// Supplied only while a scan is still being built. When both are nil the
+    /// point list is read-only, which is right for a scan already saved.
+    private let onDeletePoint: ((ScanData.PointData) -> Void)?
+    private let onMovePoints: ((IndexSet, Int) -> Void)?
+
+    private var isEditable: Bool { onDeletePoint != nil || onMovePoints != nil }
+
+    init(
+        scanData: ScanData,
+        onDeletePoint: ((ScanData.PointData) -> Void)? = nil,
+        onMovePoints: ((IndexSet, Int) -> Void)? = nil,
+        @ViewBuilder footer: () -> Footer
+    ) {
         self.scanData = scanData
+        self.onDeletePoint = onDeletePoint
+        self.onMovePoints = onMovePoints
         self.footer = footer()
     }
 
@@ -91,24 +105,52 @@ struct ScanPreviewView<Footer: View>: View {
 
     private var pointListSheet: some View {
         NavigationStack {
-            List(scanData.pointsData, id: \.uuid) { point in
-                HStack {
-                    Circle()
-                        .fill(Color(point.pointType.uiColor))
-                        .frame(width: 14, height: 14)
-                    Text("\(point.pointType.displayName) \(point.index)")
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if !point.notes.isEmpty {
-                        Text(point.notes)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            List {
+                ForEach(scanData.pointsData, id: \.uuid) { point in
+                    HStack {
+                        Circle()
+                            .fill(Color(point.pointType.uiColor))
+                            .frame(width: 14, height: 14)
+                        Text("\(point.pointType.displayName) \(point.index)")
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if !point.notes.isEmpty {
+                            Text(point.notes)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
                     }
                 }
+                .onDelete { offsets in
+                    // Offsets index this list, which is built from the scan's
+                    // points in order, so they map straight through.
+                    for offset in offsets.sorted(by: >) where scanData.pointsData.indices.contains(offset) {
+                        onDeletePoint?(scanData.pointsData[offset])
+                    }
+                }
+                .onMove { source, destination in
+                    onMovePoints?(source, destination)
+                }
+                .deleteDisabled(onDeletePoint == nil)
+                .moveDisabled(onMovePoints == nil)
             }
             .navigationTitle("Points (\(scanData.pointsData.count))")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if isEditable {
+                    ToolbarItem(placement: .topBarTrailing) { EditButton() }
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if isEditable {
+                    Text("Swipe a point to delete it. Tap Edit to drag points into order — the perimeter follows their order.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(12)
+                }
+            }
         }
         .presentationDetents([.medium, .large])
     }
@@ -120,8 +162,18 @@ private struct ScenePreviewContainer: UIViewRepresentable {
 
     let scanData: ScanData
 
+    /// Remembers which point set is on screen, so editing the list redraws the
+    /// model. Without this the scene was built once and a deleted point stayed
+    /// visible in 3D.
+    final class Coordinator {
+        var signature = ""
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
     func makeUIView(context: Context) -> SCNView {
         let view = SCNView()
+        context.coordinator.signature = Self.signature(for: scanData)
         view.scene = Self.buildScene(from: scanData)
         view.allowsCameraControl = true
         view.autoenablesDefaultLighting = true
@@ -134,7 +186,22 @@ private struct ScenePreviewContainer: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: SCNView, context: Context) {}
+    func updateUIView(_ uiView: SCNView, context: Context) {
+        let signature = Self.signature(for: scanData)
+        guard signature != context.coordinator.signature else { return }
+        context.coordinator.signature = signature
+        // Rebuilding resets the orbit, which is what you want after an edit:
+        // the camera re-frames the shape that just changed.
+        uiView.scene = Self.buildScene(from: scanData)
+    }
+
+    /// Cheap stand-in for equality — the point set and the mesh are the only
+    /// things the scene is built from.
+    private static func signature(for scanData: ScanData) -> String {
+        scanData.meshString + scanData.pointsData
+            .map { "\($0.uuid):\($0.index)" }
+            .joined(separator: ",")
+    }
 
     /// Unity coordinates (left-handed) -> SceneKit (right-handed): negate z.
     private static func scnVector(_ v: ProjectData.Vector3) -> SCNVector3 {
